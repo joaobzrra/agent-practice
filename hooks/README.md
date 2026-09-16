@@ -77,7 +77,7 @@ Two traps worth remembering, both found by the tests rather than by review:
    shell variable (`cd "$REPO" && git commit`) reaches the hook unexpanded. When
    the repo cannot be determined the diff cannot be read, and a guard that
    cannot read the diff must not report a pass. The fix is a literal path:
-   `git -C E:/Projects/<repo> commit -F .git/COMMITMSG`.
+   `git -C /path/to/repo commit -F .git/COMMITMSG`.
 3. **Child stderr is suppressed explicitly.** `execFileSync` forwards a child's
    stderr to the parent by default, so a failed `git diff` dumped git's entire
    usage text into the block message.

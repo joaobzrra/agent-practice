@@ -9,7 +9,7 @@
  *
  *   2. Which repository? The hook payload's `cwd` is the SESSION working
  *      directory, not where the command runs. Claude routinely writes
- *      `cd E:/Projects/Foo && git commit ...`, and the session cwd is often not
+ *      `cd /path/to/repo && git commit ...`, and the session cwd is often not
  *      a repo at all. Using the payload cwd blindly makes `git diff --cached`
  *      fail outside a repo — silently disabling the scan — or scan the wrong
  *      repository.
