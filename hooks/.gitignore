@@ -1,0 +1,3 @@
+# Real personal-identifier config for lib/leak-scan.mjs. Never commit this —
+# copy identity.example.json to identity.json and fill in your own values.
+identity.json

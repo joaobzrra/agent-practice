@@ -1,0 +1,6 @@
+{
+  "emails": ["you@example.com"],
+  "usernames": ["your-os-username"],
+  "gitHubUsernames": ["your-gh-handle"],
+  "homePathSegments": ["your-os-username"]
+}
