@@ -11,7 +11,7 @@ export const packageRoot = resolve(here, "../../..");
 
 function fallback(root) {
   const name = basename(root);
-  return { repository: name.toLowerCase(), displayName: name };
+  return { repository: name.toLowerCase(), displayName: name, appliesTo: [] };
 }
 
 /**
@@ -29,7 +29,11 @@ export function loadConfig(root = packageRoot) {
     const pick = (value, spare) => (typeof value === "string" && value.trim() ? value.trim() : spare);
     return {
       repository: pick(parsed.repository, base.repository),
-      displayName: pick(parsed.displayName, base.displayName)
+      displayName: pick(parsed.displayName, base.displayName),
+      // File-name patterns. When this ledger's hook runs for a session in
+      // another project, it speaks only if that project holds a matching
+      // file. See `serves` in hook.mjs.
+      appliesTo: Array.isArray(parsed.appliesTo) ? parsed.appliesTo.filter(item => typeof item === "string" && item.trim()).map(item => item.trim()) : []
     };
   } catch {
     return base;

@@ -316,6 +316,55 @@ prompt that matches no claim, so inside a session the two look the same. The
 block at the start of the session is the sign of life: if it is missing, run
 `node src/cli.mjs validate`.
 
+## One ledger for several projects
+
+Some lessons belong to a stack, not to a project: what a game engine does on
+a dedicated server, what a framework's build does to a new route. Recorded in
+one project's ledger, they are learned again in the next one.
+
+A ledger can serve sessions in other projects. Nothing is installed in those
+projects.
+
+1. Give the shared ledger a folder of its own, outside any project, and
+   install the tool there as in "Install in your project" (steps 1 to 3 and
+   6 to 8). The folder then holds `context/` and `tools/context-ledger/`.
+2. Say which projects it applies to, in `context/ledger.config.json`:
+
+   ```json
+   {
+     "repository": "engine-lessons",
+     "displayName": "Engine lessons",
+     "appliesTo": ["*.uproject"]
+   }
+   ```
+
+   `appliesTo` is a list of file names, with `*` for any run of characters.
+   The ledger speaks in a session when a matching file is in the session's
+   folder, in a folder above it, or in a folder directly under it. Leave
+   `appliesTo` out and the ledger speaks in every project its hook runs for.
+3. Register its hook in your user settings (`~/.claude/settings.json`), with
+   the same four entries as in step 4 of the install, and the absolute path
+   of the shared ledger's `hook.mjs` in place of
+   `${CLAUDE_PROJECT_DIR}/tools/context-ledger/src/hook.mjs`.
+
+What changes for a session in another project:
+
+- A claim's `scope.paths` is matched against the session's project. A claim
+  scoped to `Config/DefaultEngine.ini` is sent when the agent opens that file
+  in whichever project it is working in.
+- The command a message gives for reading a claim names the shared ledger's
+  own `cli.mjs` by its full path.
+- A project can have its own ledger as well. The two hooks send two separate
+  messages, each built to fit.
+
+Keep project decisions out of a shared ledger. A claim there is read in every
+project it applies to, so it must be true in all of them: name no file, class
+or level that belongs to one project, except inside `detail`.
+
+A hook in the user settings starts one Node process per prompt in every
+project. In a project the ledger does not apply to, it reads one config file
+and a few folder listings and exits.
+
 ## How a claim is chosen
 
 Retrieval matches words and paths. It does not understand meaning.
@@ -420,7 +469,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-109 tests. They build an invented project in a temp folder
+112 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

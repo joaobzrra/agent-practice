@@ -106,21 +106,52 @@ function repositoryState(root) {
 // The file itself may not exist: a read that failed, a path about to be
 // written. realpath throws on those, so the real spelling is taken from the
 // nearest folder that does exist and the rest of the path is put back on.
+function real(path) {
+  const missing = [];
+  for (let current = path; ;) {
+    try { return join(realpathSync.native(current), ...missing); } catch { /* not there: try the folder above */ }
+    const parent = dirname(current);
+    if (parent === current) return path;
+    missing.unshift(basename(current));
+    current = parent;
+  }
+}
+
 function projectPath(root, file) {
   if (typeof file !== "string" || !file) return null;
-  const real = path => {
-    const missing = [];
-    for (let current = path; ;) {
-      try { return join(realpathSync.native(current), ...missing); } catch { /* not there: try the folder above */ }
-      const parent = dirname(current);
-      if (parent === current) return path;
-      missing.unshift(basename(current));
-      current = parent;
-    }
-  };
   const inside = relative(real(root), real(resolve(root, file)));
   if (!inside || inside.startsWith("..") || isAbsolute(inside)) return null;
   return withoutWorktree(inside.replaceAll("\\", "/"));
+}
+
+// One ledger can serve sessions in other projects: lessons about an engine or
+// a stack, kept in one place and registered once in the user's settings.
+// Such a session works in a folder outside the ledger's own. `guestOf`
+// returns that folder, or null when the session is in the ledger's project.
+function guestOf(root, project) {
+  if (typeof project !== "string" || !project) return null;
+  const between = relative(real(root), real(resolve(project)));
+  return between.startsWith("..") || isAbsolute(between) ? resolve(project) : null;
+}
+
+// Does a shared ledger have anything to say in this project? `patterns` are
+// file names with `*` for any run of characters ("*.uproject", "Cargo.toml").
+// A match in the session's folder, in a folder above it, or in one directly
+// under it counts: a session is often started in a project's subfolder, or
+// in the folder that holds several projects. No patterns means the ledger
+// serves every project its hook is registered for.
+export function serves(project, patterns) {
+  if (!patterns.length) return true;
+  const tests = patterns.map(pattern => new RegExp(`^${pattern.split("*").map(part => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "i"));
+  const names = folder => { try { return readdirSync(folder, { withFileTypes: true }); } catch { return []; } };
+  const holds = entries => entries.some(entry => !entry.isDirectory() && tests.some(test => test.test(entry.name)));
+  const here = names(project);
+  if (holds(here)) return true;
+  for (let current = dirname(project); ; current = dirname(current)) {
+    if (holds(names(current))) return true;
+    if (dirname(current) === current) break;
+  }
+  return here.filter(entry => entry.isDirectory()).slice(0, 200).some(entry => holds(names(join(project, entry.name))));
 }
 
 const union = (...lists) => [...new Set(lists.flat())];
@@ -174,10 +205,22 @@ function recorded(keys, pack, ids) {
   return [...keys.filter(key => !sent.has(idOf(key))), ...entries.map(keyOf)];
 }
 
-export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = null } = {}) {
+// `root` is where the ledger lives. `project` is the folder the session
+// works in, when the caller knows it. They are the same place for a ledger
+// installed in its own project. For a shared ledger they differ, and then
+// files and paths are read against the session's project (`ground`), while
+// the claims, the config and the command that prints a claim stay the
+// ledger's own.
+export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = null, project = null } = {}) {
   try {
-    const ledger = loadLedger(root);
     const config = loadConfig(root);
+    const guest = guestOf(root, project);
+    // Checked before the ledger is read: a hook registered for every project
+    // runs on every prompt in all of them, and most are not its concern.
+    if (guest && !serves(guest, config.appliesTo)) return null;
+    const ground = guest ?? root;
+    const expand = guest ? `node "${join(root, "tools", "context-ledger", "src", "cli.mjs").replaceAll("\\", "/")}" expand --claim <id>` : undefined;
+    const ledger = loadLedger(root);
     const resolvedStateRoot = stateRoot ?? join(tmpdir(), "context-ledger", config.repository);
     mkdirSync(resolvedStateRoot, { recursive: true });
     const session = safeName(input.session_id);
@@ -199,19 +242,19 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
       if (!resumed) pruneState(resolvedStateRoot);
       const talk = conversation(ledger, resumed ? readState(mainPath).known : []);
       const notice = withdrawal(ledger, talk.withdrawn);
-      const rendered = renderSessionStart(ledger, { displayName, known: talk.held, changed: talk.changed, recall: false, budget: sessionStartBudget - notice.length });
+      const rendered = renderSessionStart(ledger, { displayName, known: talk.held, changed: talk.changed, recall: false, budget: sessionStartBudget - notice.length, expand });
       if (resumed && !rendered.text && !notice) return null;
       const active = ledger.claims.filter(claim => activeStates.has(claim.state)).length;
-      const tail = `${repositoryState(root)}\nLedger: ${active} active claims, ${ledger.documents.length} registered documents. A claim about a request, or scoped to a file you open or edit, is sent when that happens.`.slice(0, sessionTailRoom - 1);
+      const tail = `${repositoryState(ground)}\nLedger: ${active} active claims, ${ledger.documents.length} registered documents. A claim about a request, or scoped to a file you open or edit, is sent when that happens.`.slice(0, sessionTailRoom - 1);
       context = `${rendered.text || `# ${displayName} routed context\n`}${notice}\n${tail}`;
       save = [mainPath, latest => (resumed
         ? { ...latest, known: after(latest.known, talk.withdrawn, rendered.pack, rendered.full) }
         : { known: recorded([], rendered.pack, rendered.full) })];
     } else if (event === "UserPromptSubmit") {
       const talk = conversation(ledger, readState(mainPath).known);
-      const pack = routeContext(ledger, { prompt: String(input.prompt ?? ""), limit: routingBudget, free: talk.held, root });
+      const pack = routeContext(ledger, { prompt: String(input.prompt ?? ""), limit: routingBudget, free: talk.held, root: ground });
       const notice = withdrawal(ledger, talk.withdrawn);
-      const rendered = renderPack(pack, { displayName, known: talk.held, changed: talk.changed, budget: packCharBudget - notice.length });
+      const rendered = renderPack(pack, { displayName, known: talk.held, changed: talk.changed, budget: packCharBudget - notice.length, expand });
       context = rendered.text ? `${rendered.text}${notice}` : notice ? `# ${displayName} routed context\n${notice}` : "";
       // Kept for the subagents this prompt goes on to start: which claims the
       // prompt was about, by id. Their text is read from the ledger when a
@@ -220,9 +263,9 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
       const activeIds = pack.priority.filter(id => !everywhere.has(id));
       save = [mainPath, latest => ({ ...latest, activeIds, known: after(latest.known, talk.withdrawn, pack, rendered.full) })];
     } else if (event === "SubagentStart") {
-      const standing = routeContext(ledger, { limit: routingBudget, root });
+      const standing = routeContext(ledger, { limit: routingBudget, root: ground });
       const merged = packOf(ledger, union(standing.priority, readState(mainPath).activeIds ?? []), { standing: standing.standing, droppedMandatory: standing.droppedMandatory });
-      const rendered = renderPack(merged, { displayName });
+      const rendered = renderPack(merged, { displayName, expand });
       context = rendered.text;
       // Without an id there is no conversation to keep a record for, and the
       // main one must not be written over.
@@ -235,15 +278,15 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
     } else if (event === "PostToolUse") {
       // The only event that knows which file is in play, so the only one
       // where a claim's scope.paths can count in a live session.
-      const file = projectPath(root, input.tool_input?.file_path ?? input.tool_input?.notebook_path);
+      const file = projectPath(ground, input.tool_input?.file_path ?? input.tool_input?.notebook_path);
       if (!file) return null;
       const statePath = agentPath ?? mainPath;
       const talk = conversation(ledger, readState(statePath).known);
       // Standing claims belong to the start of the conversation, so they do
       // not use up the room a file's own claims need, and they are not sent
       // beside a file unless the file is what they are scoped to.
-      const everywhere = routeContext(ledger, { limit: routingBudget, root }).standing;
-      const pack = routeContext(ledger, { paths: [file], limit: routingBudget, free: union(talk.held, everywhere), root });
+      const everywhere = routeContext(ledger, { limit: routingBudget, root: ground }).standing;
+      const pack = routeContext(ledger, { paths: [file], limit: routingBudget, free: union(talk.held, everywhere), root: ground });
       const hits = new Set(pack.matched);
       const notice = withdrawal(ledger, talk.withdrawn);
       const heading = `# ${displayName} routed context for ${file}`;
@@ -255,7 +298,8 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
         changed: talk.changed,
         heading,
         recall: false,
-        budget: packCharBudget - notice.length
+        budget: packCharBudget - notice.length,
+        expand
       });
       const brought = rendered.full.length || rendered.titled.length;
       if (!brought && !notice) return null;
@@ -287,7 +331,10 @@ const invoked = process.argv[1] && fileURLToPath(import.meta.url) === process.ar
 if (invoked) {
   const event = process.argv[2] ?? "";
   try {
-    const output = buildHookOutput(event, await readStdin());
+    const input = await readStdin();
+    // Claude Code sets CLAUDE_PROJECT_DIR for a hook and puts the working
+    // folder in its input.
+    const output = buildHookOutput(event, input, { project: process.env.CLAUDE_PROJECT_DIR || input.cwd || null });
     if (output) process.stdout.write(JSON.stringify(output));
   } catch {
     // Deliberately fail open and stay silent.

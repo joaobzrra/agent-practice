@@ -79,6 +79,24 @@ there, then re-vendor. An edit made in a vendored copy is destroyed by the next
 refresh. `node check-vendor.mjs <other copy>`, run from the source copy,
 reports whether a copy has drifted.
 
+### A shared ledger
+
+A lesson about a stack (an engine, a framework, a toolchain) is true in every
+project that uses it. It goes in a shared ledger: a folder of its own with the
+tool installed, an `appliesTo` list in its `context/ledger.config.json`, and
+its hook registered in the user settings. The package's `README.md` has the
+steps under "One ledger for several projects".
+
+When a message is headed with a name that is not the project's, it came from
+a shared ledger, and the command it gives for reading a claim carries that
+ledger's full path. Write to it from its own folder, with the same claim
+shape and the same gates.
+
+Before writing a claim, decide where it belongs. Would it bite a new project
+on the same stack with different features? Then it is a shared claim: write
+it without any name that belongs to one project (those go in `detail`). If it
+is about this project's design or code, it stays in the project's ledger.
+
 ## Privacy: check before you commit
 
 **Some ledgers are deliberately gitignored, and that is not a mistake to fix.**

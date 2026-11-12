@@ -625,7 +625,7 @@ const detailMark = "[+detail]";
  * which ones the conversation now holds. The text is empty when there is
  * nothing to say.
  */
-export function renderPack(pack, { displayName = loadConfig().displayName, budget = packCharBudget, known = [], changed = [], heading = `# ${displayName} routed context`, recall = true } = {}) {
+export function renderPack(pack, { displayName = loadConfig().displayName, budget = packCharBudget, known = [], changed = [], heading = `# ${displayName} routed context`, recall = true, expand = expandCommand } = {}) {
   const claims = new Map();
   const sectionOf = new Map();
   for (const [key] of packSections) for (const claim of pack[key] ?? []) { claims.set(claim.id, claim); sectionOf.set(claim.id, key); }
@@ -667,9 +667,9 @@ export function renderPack(pack, { displayName = loadConfig().displayName, budge
     }
     // A statement says what to do. The evidence behind it stays in the
     // ledger, and the agent is told where, once per message.
-    if (fresh.some(id => full.has(id) && claims.get(id).hasDetail)) lines.push(`\n${detailMark} means the ledger holds the evidence and background of that claim: \`${expandCommand}\``);
+    if (fresh.some(id => full.has(id) && claims.get(id).hasDetail)) lines.push(`\n${detailMark} means the ledger holds the evidence and background of that claim: \`${expand}\``);
     if (titled.length || omitted) {
-      lines.push("\n## Also matched, by title only", `These did not fit in this message. Before acting in one's area, read it whole: \`${expandCommand}\``);
+      lines.push("\n## Also matched, by title only", `These did not fit in this message. Before acting in one's area, read it whole: \`${expand}\``);
       for (const id of titled) lines.push(titles.get(id) ? `- [${id}] ${titles.get(id)}` : `- [${id}]`);
       if (omitted) lines.push(`- and ${omitted} more matched that are not listed`);
     }

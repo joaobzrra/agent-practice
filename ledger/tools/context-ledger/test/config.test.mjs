@@ -15,7 +15,15 @@ function scratch(contents) {
 
 test("reads repository and displayName from the config file", () => {
   const root = scratch(JSON.stringify({ repository: "tablebook", displayName: "Tablebook" }));
-  assert.deepEqual(loadConfig(root), { repository: "tablebook", displayName: "Tablebook" });
+  // appliesTo was added with shared ledgers; a config without it serves
+  // every project its hook is registered for.
+  assert.deepEqual(loadConfig(root), { repository: "tablebook", displayName: "Tablebook", appliesTo: [] });
+});
+
+test("appliesTo is a list of file-name patterns, and anything else is no list", () => {
+  assert.deepEqual(loadConfig(scratch(JSON.stringify({ appliesTo: ["*.uproject", " Cargo.toml ", "", 7, null] }))).appliesTo, ["*.uproject", "Cargo.toml"]);
+  assert.deepEqual(loadConfig(scratch(JSON.stringify({ appliesTo: "*.uproject" }))).appliesTo, []);
+  assert.deepEqual(loadConfig(scratch(null)).appliesTo, []);
 });
 
 test("falls back to the directory name when no config exists", () => {

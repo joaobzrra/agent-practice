@@ -12,7 +12,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { buildHookOutput } from "../src/hook.mjs";
 import { fit, packCharBudget, renderPack, renderSessionStart, routeContext, semanticIssues } from "../src/ledger.mjs";
-import { makeProject, tempDir } from "../fixtures/project.mjs";
+import { fixtureConfig, makeProject, tempDir } from "../fixtures/project.mjs";
 
 const harnessCap = 10000;
 
@@ -523,6 +523,49 @@ test("a file that is not there yet is still inside the project when the project 
     // The link only, never what it points at.
     try { unlinkSync(link); } catch { rmdirSync(link); }
   }
+});
+
+test("a ledger registered for another project reads that project's files and names its own command", () => {
+  // A shared ledger: its hook is registered in the user's settings, and the
+  // session works somewhere else. The claims come from the ledger. The files
+  // are the session's.
+  const home = makeProject();
+  const guest = tempDir("ledger-guest-");
+  const stateRoot = tempDir("ledger-delivery-");
+  const run = (event, input, project = guest) => context(buildHookOutput(event, { session_id: "guest", ...input }, { root: home.root, stateRoot, project }));
+  const path = join(home.root, "context", "claims.json");
+  const claims = JSON.parse(readFileSync(path, "utf8"));
+  claims.find(item => item.id === "CLM-orders-table-lock").detail = "Seen once: four minutes behind one ALTER.";
+  writeFileSync(path, JSON.stringify(claims, null, 2), "utf8");
+
+  const read = run("PostToolUse", { tool_name: "Read", tool_input: { file_path: join(guest, "db", "migrations", "0001_init.sql") } });
+  assert.match(read, /A bare ALTER TABLE/, "a path in the session's project is matched against the claim's scope");
+  const cli = join(home.root, "tools", "context-ledger", "src", "cli.mjs").replaceAll("\\", "/");
+  assert.ok(read.includes(`node "${cli}" expand --claim <id>`), "the command to read a claim names the ledger's own tool, since the session is not in its folder");
+  assert.equal(run("PostToolUse", { tool_name: "Read", tool_input: { file_path: join(home.root, "db", "migrations", "0001_init.sql") } }), "", "a file in the ledger's own folder is outside the session's project");
+  assert.match(run("UserPromptSubmit", { session_id: "guest-2", prompt: "reword reminder email" }), /records that it sent before it queues/);
+});
+
+test("a shared ledger speaks only in the projects it applies to", () => {
+  const home = makeProject();
+  writeFileSync(join(home.root, "context", "ledger.config.json"), JSON.stringify({ ...fixtureConfig, appliesTo: ["*.uproject"] }), "utf8");
+  const stateRoot = tempDir("ledger-delivery-");
+  const says = project => context(buildHookOutput("UserPromptSubmit", { session_id: `applies-${Math.random()}`, prompt: "reword reminder email" }, { root: home.root, stateRoot, project })) !== "";
+  const game = tempDir("ledger-game-");
+  writeFileSync(join(game, "Arcade.uproject"), "{}", "utf8");
+  mkdirSync(join(game, "Source", "Arcade"), { recursive: true });
+  const shelf = tempDir("ledger-shelf-");
+  mkdirSync(join(shelf, "GameTwo"));
+  writeFileSync(join(shelf, "GameTwo", "GameTwo.UPROJECT"), "{}", "utf8");
+  const other = tempDir("ledger-other-");
+  writeFileSync(join(other, "package.json"), "{}", "utf8");
+
+  assert.equal(says(game), true, "the project folder holds a matching file");
+  assert.equal(says(join(game, "Source", "Arcade")), true, "a session started in a subfolder of the project");
+  assert.equal(says(shelf), true, "a session started in the folder that holds the projects");
+  assert.equal(says(other), false, "a project of another kind is not its concern");
+  assert.equal(says(home.root), true, "and its own project is never filtered");
+  assert.equal(says(null), true, "nor a caller that does not say where the session is");
 });
 
 test("a message fits even when ids alone would fill it", () => {
