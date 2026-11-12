@@ -357,6 +357,17 @@ What changes for a session in another project:
 - A project can have its own ledger as well. The two hooks send two separate
   messages, each built to fit.
 
+A ledger about one subject has words that every claim shares: the engine's
+name, "game", "editor". A prompt that holds one of them would match a dozen
+titles. List them in the config and they are dropped from every prompt before
+claims are matched, like "the" and "that":
+
+```json
+"ignoreWords": ["unreal", "engine", "game", "editor"]
+```
+
+`ignoreWords` works in any ledger, shared or not.
+
 Keep project decisions out of a shared ledger. A claim there is read in every
 project it applies to, so it must be true in all of them: name no file, class
 or level that belongs to one project, except inside `detail`.
@@ -469,7 +480,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-113 tests. They build an invented project in a temp folder
+116 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

@@ -24,7 +24,7 @@ npm install
 node src/cli.mjs route --prompt "add a notes column to the bookings table" --paths db/migrations/0042_booking_notes.sql --limit 2 --format markdown
 ```
 
-That prints the first pack below. `npm run ci` runs the tool's 113 tests and
+That prints the first pack below. `npm run ci` runs the tool's 116 tests and
 then checks this ledger.
 
 ## How often it runs

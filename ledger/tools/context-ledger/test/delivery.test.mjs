@@ -568,6 +568,17 @@ test("a shared ledger speaks only in the projects it applies to", () => {
   assert.equal(says(null), true, "nor a caller that does not say where the session is");
 });
 
+test("the hook drops the ledger's ignored words from a prompt", () => {
+  const own = makeProject();
+  const stateRoot = tempDir("ledger-delivery-");
+  const says = (session, prompt) => context(buildHookOutput("UserPromptSubmit", { session_id: session, prompt }, { root: own.root, stateRoot }));
+  assert.match(says("ignore-before", "the reminder"), /records that it sent before it queues/);
+  writeFileSync(join(own.root, "context", "ledger.config.json"), JSON.stringify({ ...fixtureConfig, ignoreWords: ["reminder"] }), "utf8");
+  // A new conversation is still sent the standing claims, so the message is
+  // not empty. The claim the prompt would have chosen is not in it.
+  assert.equal(says("ignore-after", "the reminder").includes("records that it sent before it queues"), false, "the only word that matched is one the ledger ignores");
+});
+
 test("a message fits even when ids alone would fill it", () => {
   // The schema puts no limit on the length of an id, and the lines that name
   // claims by id are not built claim by claim.

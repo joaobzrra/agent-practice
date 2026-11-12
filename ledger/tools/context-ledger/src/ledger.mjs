@@ -489,8 +489,14 @@ export function conflictComponents(claims) {
  * (claims the prompt or the paths actually hit) and `cut` (the id and title
  * of each claim the cap left out, best first, so a caller can name them).
  */
-export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free = [], root = repoRoot } = {}) {
-  const promptTokens = tokens(prompt);
+// `ignore` holds words that say nothing about which claim is wanted in this
+// ledger: the name of the engine every claim is about, "game" in a ledger of
+// game lessons. They are dropped from the prompt like filler words, so a
+// claim is not chosen because its title happens to hold one. The ledger's
+// config lists them (`ignoreWords`).
+export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free = [], root = repoRoot, ignore = [] } = {}) {
+  const ignored = tokens(ignore.join(" "));
+  const promptTokens = new Set([...tokens(prompt)].filter(token => !ignored.has(token)));
   const normalizedPaths = paths.map(comparablePath).filter(Boolean);
   const mentions = mentionedPaths(prompt, root);
   const uncounted = new Set(free);

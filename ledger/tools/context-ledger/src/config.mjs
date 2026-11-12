@@ -11,7 +11,7 @@ export const packageRoot = resolve(here, "../../..");
 
 function fallback(root) {
   const name = basename(root);
-  return { repository: name.toLowerCase(), displayName: name, appliesTo: [] };
+  return { repository: name.toLowerCase(), displayName: name, appliesTo: [], ignoreWords: [] };
 }
 
 /**
@@ -27,13 +27,17 @@ export function loadConfig(root = packageRoot) {
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
     const pick = (value, spare) => (typeof value === "string" && value.trim() ? value.trim() : spare);
+    const list = value => (Array.isArray(value) ? value.filter(item => typeof item === "string" && item.trim()).map(item => item.trim()) : []);
     return {
       repository: pick(parsed.repository, base.repository),
       displayName: pick(parsed.displayName, base.displayName),
       // File-name patterns. When this ledger's hook runs for a session in
       // another project, it speaks only if that project holds a matching
       // file. See `serves` in hook.mjs.
-      appliesTo: Array.isArray(parsed.appliesTo) ? parsed.appliesTo.filter(item => typeof item === "string" && item.trim()).map(item => item.trim()) : []
+      appliesTo: list(parsed.appliesTo),
+      // Words dropped from every prompt before claims are matched. See
+      // routeContext in ledger.mjs.
+      ignoreWords: list(parsed.ignoreWords)
     };
   } catch {
     return base;

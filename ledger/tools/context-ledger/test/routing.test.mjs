@@ -337,6 +337,24 @@ test("words in a claim's detail count like words in its statement", () => {
   assert.equal(idsFrom(routeContext(after, { prompt: "vacuum" })).has("CLM-prose"), false, "one is not, as in a statement");
 });
 
+test("a word the ledger ignores does not choose a claim, wherever the claim holds it", () => {
+  // In a ledger of lessons about one engine, "game" and "editor" are in a
+  // dozen titles. A prompt that says "game" is not asking for those twelve.
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-title", title: "A packaged game skips the construction script" }),
+      claim({ id: "CLM-topic", title: "Cook", scope: { topics: ["game", "cooking"], paths: [], entities: [] } })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const route = (prompt, ignore) => [...idsFrom(routeContext(fixture, { prompt, ignore }))].sort();
+  assert.deepEqual(route("the game hangs"), ["CLM-title", "CLM-topic"], "without the setting, one shared word is a match");
+  assert.deepEqual(route("the game hangs", ["Game"]), [], "with it, the word is dropped from the prompt, whatever its case");
+  assert.deepEqual(route("the packaged game hangs", ["game"]), ["CLM-title"], "and the other words still match");
+  assert.deepEqual(route("cooking the game", ["game"]), ["CLM-topic"]);
+});
+
 test("a path matches at a folder boundary, not in the middle of a name", () => {
   const fixture = {
     claims: [claim({ id: "CLM-app", scope: { topics: ["zzzz"], paths: ["src/app"], entities: [] } })],

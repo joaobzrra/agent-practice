@@ -17,7 +17,12 @@ test("reads repository and displayName from the config file", () => {
   const root = scratch(JSON.stringify({ repository: "tablebook", displayName: "Tablebook" }));
   // appliesTo was added with shared ledgers; a config without it serves
   // every project its hook is registered for.
-  assert.deepEqual(loadConfig(root), { repository: "tablebook", displayName: "Tablebook", appliesTo: [] });
+  assert.deepEqual(loadConfig(root), { repository: "tablebook", displayName: "Tablebook", appliesTo: [], ignoreWords: [] });
+});
+
+test("ignoreWords is a list of words, and anything else is no list", () => {
+  assert.deepEqual(loadConfig(scratch(JSON.stringify({ ignoreWords: ["game", " engine ", "", 3] }))).ignoreWords, ["game", "engine"]);
+  assert.deepEqual(loadConfig(scratch(JSON.stringify({ ignoreWords: "game" }))).ignoreWords, []);
 });
 
 test("appliesTo is a list of file-name patterns, and anything else is no list", () => {
