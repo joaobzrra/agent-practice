@@ -76,7 +76,7 @@ So the system is built on one idea:
 | **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
-| **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it. |
+| **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it and a first CI run that found a fifth. |
 
 ## The rules that matter most
 
@@ -141,7 +141,7 @@ $ node hooks/test/new-guards.test.mjs
 21 passed, 0 failed
 
 $ node hooks/test/ci-gate.test.mjs
-53 passed, 0 failed
+58 passed, 0 failed
 
 $ node hooks/test/fail-closed.test.mjs
 16 passed, 0 failed

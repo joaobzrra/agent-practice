@@ -39,7 +39,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,7 +50,21 @@ const MAP_FILE = process.env.CI_GATE_MAP || join(HOOKS_DIR, 'ci-commands.json');
 export const APPROVALS_FILE =
   process.env.CI_GATE_APPROVALS || join(HOOKS_DIR, 'ci-command-approvals.json');
 
-export const normPath = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+const normPath = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+
+// One directory can be spelled several ways: through a symlink or junction, as
+// a Windows 8.3 short name (`RUNNER~1`), as `/tmp` on macOS. Git reports the
+// real spelling; a person typing a path may use another. Every path is
+// resolved to the real one before it is compared or stored, or an approval
+// recorded under one spelling is never found under the other. A path that no
+// longer exists cannot be resolved and is compared as written.
+export function canonPath(p) {
+  try {
+    return normPath(realpathSync.native(p));
+  } catch {
+    return normPath(p);
+  }
+}
 
 // Line endings are normalised so a checkout that rewrites them does not look
 // like a change to the command.
@@ -79,9 +93,9 @@ function readJson(file, name) {
 }
 
 function lookup(map, repo) {
-  const want = normPath(repo);
+  const want = canonPath(repo);
   for (const [key, value] of Object.entries(map)) {
-    if (!key.startsWith('_') && normPath(key) === want && typeof value === 'string' && value.trim()) {
+    if (!key.startsWith('_') && canonPath(key) === want && typeof value === 'string' && value.trim()) {
       return value.trim();
     }
   }
@@ -132,7 +146,7 @@ export function readCiCommand(repo) {
     // First sight, in a checkout nothing else gates: record it. From now on a
     // change to this file is a change to the gate, and blocks.
     try {
-      writeFileSync(APPROVALS_FILE, JSON.stringify({ ...approvals, [normPath(repo)]: hash }, null, 2) + '\n');
+      writeFileSync(APPROVALS_FILE, JSON.stringify({ ...approvals, [canonPath(repo)]: hash }, null, 2) + '\n');
     } catch (e) {
       throw new Error(`could not record ${file} in ${APPROVALS_FILE}: ${e.message}`);
     }

@@ -18,7 +18,7 @@ Installed 2026-08-23 from the `/insights` report covering 2026-07-04 → 2026-08
 | `identifier-guard.mjs` | **Advisory.** PostToolUse on `Edit`/`Write`/`MultiEdit`. Flags freshly written GTA/FiveM asset names, coordinate literals and rotation calls in `.lua`, and asks where each came from. |
 | `test/commit-guards.test.mjs` | 31 cases covering both commit guards, the allow paths, the exemptions, the repo resolution, and that a blocked secret is not echoed. |
 | `test/new-guards.test.mjs` | 21 cases covering deploy freshness and the identifier guard, including the silence cases. |
-| `test/ci-gate.test.mjs` | 53 cases covering the CI gate: opt-in sources, docs-only skip, `-am`, ordering after the cheap checks, the per-repo file being edited, deleted or added to dodge the gate, the working-tree note, broken config files. |
+| `test/ci-gate.test.mjs` | 58 cases covering the CI gate: opt-in sources, docs-only skip, `-am`, ordering after the cheap checks, the per-repo file being edited, deleted or added to dodge the gate, one checkout reached through two spellings of its path, the working-tree note, broken config files. |
 | `test/fail-closed.test.mjs` | 16 cases covering what happens when a guard file is itself broken: a commit blocks, everything else is left alone. |
 
 Registered in `../settings.json` under `hooks.PreToolUse` and `hooks.PostToolUse`.
@@ -161,6 +161,12 @@ node approve-ci-command.mjs <repo root> --revoke   # drop the record
 
 That script is for the person who owns the machine. An agent that runs it to
 get a commit through is bypassing the gate, and the block message says so.
+
+Paths are resolved to their real spelling before they are compared, in the
+central map, in the record and in the script. One directory can be reached
+through a symlink, a Windows short name (`RUNNER~1`) or `/tmp` on macOS, and
+git reports only the real one. The first version compared paths as typed; it
+passed on the author's machine and failed on the first GitHub Actions run.
 
 What this does not stop:
 

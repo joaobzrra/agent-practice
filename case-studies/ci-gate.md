@@ -1,4 +1,4 @@
-# Case study: the CI gate, and the review that found four holes in it
+# Case study: the CI gate, the review that found four holes in it, and the CI run that found a fifth
 
 One rule, followed from a sentence in a file to a check with tests. It is here
 because the interesting part is not the code. It is that the first version
@@ -83,7 +83,32 @@ would need a second copy of every dependency. Instead, when a commit is
 allowed while tracked edits or untracked files are left out of it, the agent
 gets a note naming them.
 
-## 5. What it does not do
+## 5. The fifth hole, found by a machine
+
+The fixes passed 121 tests on the author's Windows machine, from two
+directories. They were pushed together with a GitHub Actions workflow that
+runs the same tests on Windows and Linux.
+
+The first run: Linux green, Windows red, six failures, all in the approval
+tests.
+
+The cause was in the log pattern, not in the test. On GitHub's Windows runners
+the temp folder is spelled with a short name (`RUNNER~1`). Git
+reports the same folder by its long name. The approval was stored under one
+spelling and looked up under the other, so it was never found.
+
+That is a real bug, not a runner quirk. The same thing happens when a checkout
+is reached through a symlink, or on macOS, where `/tmp` is a link. The author's
+machine has no short names in its temp path, so no number of local runs would
+have shown it.
+
+The fix resolves every path to its real spelling before it is compared or
+stored. The new tests reach the test repository through a link, which
+reproduces the fault on every operating system. They were run against the old
+code first, to prove they fail without the fix: 5 failed. Then against the new
+code: 0 failed.
+
+## 6. What it does not do
 
 - It does not stop an agent that edits the files in the hooks folder itself.
   That is a deliberate act outside its repository, covered by the written rule
@@ -93,13 +118,14 @@ gets a note naming them.
 - It checks nothing in a repository where the Markdown is the product.
 - A commit that outlasts the hook timeout is let through by the harness.
 
-## 6. The numbers
+## 7. The numbers
 
 | | Before the review | After |
 |---|---|---|
-| Test cases across the hooks | 73 | 121 |
+| Test cases across the hooks | 73 | 126 |
 | Test files | 3 | 4 |
-| Ways a broken guard lets a commit through | 4 | 0 known |
+| Places a crashed check let a commit through | 4 | 0 known |
+| Operating systems the tests had run on | 1 | 2 |
 
 ## What to take from it
 
@@ -112,3 +138,5 @@ gets a note naming them.
    week.
 4. Write down what the guard does not do. A guard with unstated limits is
    trusted for things it never checked.
+5. Run the tests on a machine that is not yours. "Passes from two directories"
+   was true and proved less than it sounded like.

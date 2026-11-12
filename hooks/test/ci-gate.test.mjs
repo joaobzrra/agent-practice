@@ -1,5 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { writeFileSync, rmSync, mkdirSync, existsSync, appendFileSync } from 'node:fs';
+import {
+  writeFileSync, rmSync, mkdirSync, existsSync, appendFileSync,
+  symlinkSync, unlinkSync, rmdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -188,6 +191,34 @@ rmSync(join(REPO, '.claude'), { recursive: true, force: true });
 expect('recorded file deleted afterwards: blocked', hook(COMMIT).code, 2);
 approve('--revoke');
 expect('record revoked by the user: allowed again', hook(COMMIT).code, 0);
+
+// --- one directory, two spellings. A link stands in for every way this
+// happens: a symlinked path, a Windows 8.3 short name, /tmp on macOS. The hook
+// sees the real path; the person approving, or writing the map, typed another.
+reset();
+stage('app.js', 'let a = 8;\n');
+const LINK = join(tmpdir(), 'ci-gate-test-link');
+const unlink = () => {
+  try { unlinkSync(LINK); } catch { try { rmdirSync(LINK); } catch { /* not there */ } }
+};
+unlink();
+symlinkSync(REPO, LINK, 'junction'); // a junction on Windows, a symlink elsewhere
+
+writeFileSync(MAP, JSON.stringify({ [LINK]: FAIL }));
+expect('map key spelled through a link: still gates (blocked by FAIL)', hook(COMMIT).code, 2);
+expect('  ...and CI ran', ciRan(), true);
+
+writeFileSync(MAP, JSON.stringify({ [root]: FAIL }));
+mkdirSync(join(REPO, '.claude'), { recursive: true });
+writeFileSync(join(REPO, '.claude', 'ci-command'), PASS);
+spawnSync('node', [APPROVE, LINK], { encoding: 'utf8', env: ENV });
+expect('approved through a link: the approval is found', hook(COMMIT).code, 0);
+expect('  ...and the approved command ran', ciRan(), true);
+
+spawnSync('node', [APPROVE, join(LINK, '.claude')], { encoding: 'utf8', env: ENV });
+expect('approved from a folder inside the checkout: same record', hook(COMMIT).code, 0);
+ciRan();
+unlink();
 
 // --- working-tree advisory: CI passed on files the commit leaves out
 reset();

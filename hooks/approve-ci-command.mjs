@@ -19,9 +19,10 @@
  * commit through is bypassing the gate.
  */
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { APPROVALS_FILE, fileHash, normPath } from './lib/ci-gate.mjs';
+import { APPROVALS_FILE, canonPath, fileHash } from './lib/ci-gate.mjs';
 
 const args = process.argv.slice(2);
 const revoke = args.includes('--revoke');
@@ -31,8 +32,24 @@ if (!target) {
   process.exit(2);
 }
 
-const repo = resolve(target);
-const key = normPath(repo);
+// The gate keys its record on the repository root as git reports it. Ask git
+// for the same thing, so a path inside the checkout, or another spelling of
+// it, lands on the same record. A checkout that no longer exists (revoking a
+// removed worktree) is taken as written.
+function repoRoot(dir) {
+  try {
+    const top = execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return top || resolve(dir);
+  } catch {
+    return resolve(dir);
+  }
+}
+
+const repo = repoRoot(target);
+const key = canonPath(repo);
 let approvals = {};
 if (existsSync(APPROVALS_FILE)) {
   try {
@@ -43,7 +60,7 @@ if (existsSync(APPROVALS_FILE)) {
   }
 }
 for (const existing of Object.keys(approvals)) {
-  if (!existing.startsWith('_') && normPath(existing) === key) delete approvals[existing];
+  if (!existing.startsWith('_') && canonPath(existing) === key) delete approvals[existing];
 }
 
 if (revoke) {
