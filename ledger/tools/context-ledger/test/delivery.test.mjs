@@ -620,12 +620,14 @@ test("files read in parallel are all recorded, so none of their claims is sent t
   const files = Array.from({ length: 12 }, (_, index) => `src/parallel/file${index}.js`);
   // The hook finds its project from where its own file is, so it runs from a
   // copy installed in the fixture project, and keeps its records in a temp
-  // folder of this test's.
+  // folder of this test's. It is told the session is in that project: run
+  // from inside a Claude Code hook, this test inherits the real session's
+  // CLAUDE_PROJECT_DIR, and the hook would read the files against that.
   const own = makeProject({ install: true, extraClaims: files.map((path, index) => ({ id: `CLM-parallel-${index}`, title: `Parallel ${index}`, statement: `Parallel rule ${index}, body.`, scope: { topics: [], paths: [path], entities: [] } })) });
   const temp = tempDir("ledger-parallel-");
   const script = realpathSync.native(join(dirname(own.cli), "hook.mjs"));
   const read = path => new Promise((done, failed) => {
-    const child = spawn(process.execPath, [script, "PostToolUse"], { env: { ...process.env, TEMP: temp, TMP: temp, TMPDIR: temp }, stdio: ["pipe", "pipe", "ignore"] });
+    const child = spawn(process.execPath, [script, "PostToolUse"], { env: { ...process.env, CLAUDE_PROJECT_DIR: own.root, TEMP: temp, TMP: temp, TMPDIR: temp }, stdio: ["pipe", "pipe", "ignore"] });
     let out = "";
     child.stdout.on("data", chunk => { out += chunk; });
     child.on("error", failed);

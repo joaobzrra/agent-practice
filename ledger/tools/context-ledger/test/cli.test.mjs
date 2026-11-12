@@ -96,9 +96,30 @@ test("the hook accepts input that starts with a byte-order mark", () => {
   // compares like with like on machines whose temp folder has a short name.
   const hook = realpathSync.native(join(dirname(project.cli), "hook.mjs"));
   const input = `﻿${JSON.stringify({ session_id: session, prompt: "build the waitlist page" })}`;
-  const result = spawnSync(process.execPath, [hook, "UserPromptSubmit"], { input, encoding: "utf8" });
+  const result = spawnSync(process.execPath, [hook, "UserPromptSubmit"], { input, encoding: "utf8", env: { ...process.env, CLAUDE_PROJECT_DIR: project.root } });
   assert.match(result.stdout, /CLM-waitlist-notify-only/);
   rmSync(join(tmpdir(), "context-ledger", fixtureConfig.repository, `${session}.json`), { force: true });
+});
+
+// The session's folder reaches the hook through the environment Claude Code
+// gives it, or through `cwd` in its input. Both are read only by the code
+// that runs when the hook is started as a program.
+test("the hook, started as a program, learns the session's project from its environment or its input", () => {
+  const own = makeProject({ install: true });
+  writeFileSync(join(own.root, "context", "ledger.config.json"), JSON.stringify({ ...fixtureConfig, appliesTo: ["*.uproject"] }), "utf8");
+  const hook = realpathSync.native(join(dirname(own.cli), "hook.mjs"));
+  const elsewhere = realpathSync.native(tmpdir());
+  const { CLAUDE_PROJECT_DIR: inherited, ...bare } = process.env;
+  const ask = (env, extra = {}) => {
+    const session = `guest-probe-${randomUUID()}`;
+    const result = spawnSync(process.execPath, [hook, "UserPromptSubmit"], { input: JSON.stringify({ session_id: session, prompt: "build the waitlist page", ...extra }), encoding: "utf8", env });
+    rmSync(join(tmpdir(), "context-ledger", fixtureConfig.repository, `${session}.json`), { force: true });
+    return result.stdout;
+  };
+  assert.match(ask({ ...bare, CLAUDE_PROJECT_DIR: own.root }), /CLM-waitlist-notify-only/, "a session in the ledger's own project");
+  assert.equal(ask({ ...bare, CLAUDE_PROJECT_DIR: elsewhere }), "", "a session in a project the ledger does not apply to");
+  assert.equal(ask(bare, { cwd: elsewhere }), "", "the same, known only from the input");
+  assert.match(ask(bare), /CLM-waitlist-notify-only/, "and with neither, the ledger's own project is assumed");
 });
 
 test("generated views are deterministic for a populated ledger", () => {
