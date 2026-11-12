@@ -10,7 +10,7 @@ the rules, the roles, and the hooks that enforce them.**
 <p>
 <img alt="Node 18+" src="https://img.shields.io/badge/Node-18%2B-5FA04E?style=flat-square&logo=node.js&logoColor=white">
 <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-2DC6BB?style=flat-square">
-<a href="https://github.com/joaobzrra/agent-practice/actions/workflows/hook-tests.yml"><img alt="Hook tests" src="https://github.com/joaobzrra/agent-practice/actions/workflows/hook-tests.yml/badge.svg"></a>
+<a href="https://github.com/joaobzrra/agent-practice/actions/workflows/hook-tests.yml"><img alt="Tests" src="https://github.com/joaobzrra/agent-practice/actions/workflows/hook-tests.yml/badge.svg"></a>
 <img alt="Licence MIT" src="https://img.shields.io/badge/licence-MIT-F5A623?style=flat-square">
 </p>
 
@@ -76,6 +76,7 @@ So the system is built on one idea:
 | **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
+| **`library/`** | A starter cross-project knowledge library: the index builder with its tests, a document template, and six example entries. |
 | **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it and a first CI run that found a fifth. |
 
 ## The rules that matter most
@@ -204,6 +205,18 @@ close. It answers the question that wastes the most time on long projects:
 Its scoring rules are tuned, not guessed — token-overlap weights, a 2-character
 token floor, a measured per-prompt budget — because a ledger that injects
 everything is just a slower prompt.
+
+## Knowledge library
+
+[`library/`](library/README.md) is where knowledge that outlives one project
+goes: a brief per project, stack traps, procedures. An agent reads a generated
+index of one line per document and opens only what the task needs. The builder
+rejects a document that breaks the format, and `--check` fails when the index
+is stale.
+
+Its README includes what the author's own session logs show about which
+entries get opened. The short version: project briefs, often; individual
+traps, almost never, so the index line has to carry the whole point.
 
 ## Security audit
 

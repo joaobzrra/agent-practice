@@ -1,0 +1,6 @@
+# tools/build-index.mjs --check compares the generated files byte for byte.
+# Git on Windows may rewrite line endings on checkout, which would make an
+# up-to-date index look stale. Pin everything in this folder to LF. This file
+# lives here, not at a repository root, so it travels with the folder when you
+# copy it.
+* text eol=lf

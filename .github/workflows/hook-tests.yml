@@ -1,7 +1,8 @@
-name: hook tests
+name: tests
 
-# The guard hooks have no dependencies, so there is nothing to install: check
-# out, pick a Node version, run the four test files.
+# Nothing here has dependencies, so there is nothing to install: check out,
+# pick a Node version, run the test files. The file keeps its first name so
+# the badge URL in the README stays valid.
 
 on:
   push:
@@ -28,3 +29,6 @@ jobs:
       - run: node hooks/test/new-guards.test.mjs
       - run: node hooks/test/ci-gate.test.mjs
       - run: node hooks/test/fail-closed.test.mjs
+      - run: node library/tools/build-index.test.mjs
+      # The committed example index must match what the builder generates.
+      - run: node library/tools/build-index.mjs --check

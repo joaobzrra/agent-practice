@@ -1,0 +1,102 @@
+{
+  "generated": true,
+  "count": 6,
+  "documents": [
+    {
+      "id": "example-booking-app",
+      "title": "Tablebook (an invented example of a project brief)",
+      "description": "INVENTED EXAMPLE. Restaurant booking web app, Next.js and Postgres, live with paying customers. Full CI is npm run ci. Deep docs are in the repo's CLAUDE.md and docs/FOUNDATION.md.",
+      "topic": "projects",
+      "path": "projects/example-booking-app.md",
+      "tags": [
+        "example",
+        "web",
+        "nextjs",
+        "postgres"
+      ],
+      "updated": "2026-11-12",
+      "status": "current",
+      "source": "invented for this repository, to show the shape of a brief"
+    },
+    {
+      "id": "two-tier-knowledge-pattern",
+      "title": "Two-tier knowledge pattern (index cheap, content lazy)",
+      "description": "How to give agents a large knowledge store without filling their context. An always-available one-line index, and documents opened only on demand.",
+      "topic": "procedures",
+      "path": "procedures/two-tier-knowledge-pattern.md",
+      "tags": [
+        "agents",
+        "context",
+        "tokens",
+        "architecture"
+      ],
+      "updated": "2026-08-08",
+      "status": "current",
+      "source": "the design session for this library"
+    },
+    {
+      "id": "cross-platform-text-false-positives",
+      "title": "CRLF and encoding mismatches fake corruption and drift",
+      "description": "A hash mismatch across Windows/Linux is not proof a file drifted (CRLF). Normalize line endings before comparing. Garbled log text is often UTF-8 read as CP1252, not corruption.",
+      "topic": "gotchas",
+      "path": "gotchas/cross-platform-text-false-positives.md",
+      "tags": [
+        "windows",
+        "linux",
+        "encoding",
+        "deployment"
+      ],
+      "updated": "2026-08-08",
+      "status": "current",
+      "source": "a deploy check on a PHP web app, and a log-health check on a worker"
+    },
+    {
+      "id": "git-bracket-pathspec",
+      "title": "A bracket in a git pathspec is a glob, and returns zero silently",
+      "description": "git reads [name] in a pathspec as a character class, so grep/log against a bracket-named folder silently matches nothing, which looks the same as \"the code is gone\". Use :(literal).",
+      "topic": "gotchas",
+      "path": "gotchas/git-bracket-pathspec.md",
+      "tags": [
+        "git",
+        "pathspec",
+        "glob",
+        "grep",
+        "false-negative",
+        "search"
+      ],
+      "updated": "2026-08-25",
+      "status": "current",
+      "source": "a repository whose folders are bracket-named"
+    },
+    {
+      "id": "uniform-failures-single-cause",
+      "title": "Mass uniform test failures usually mean one missing prerequisite",
+      "description": "When a huge block of tests fails uniformly with empty or identical details, suspect one missing prerequisite (interpreter path, env var, credential) near the top of the log, not a regression.",
+      "topic": "gotchas",
+      "path": "gotchas/uniform-failures-single-cause.md",
+      "tags": [
+        "debugging",
+        "testing"
+      ],
+      "updated": "2026-08-08",
+      "status": "current",
+      "source": "a PHP web app's HTTP test suite"
+    },
+    {
+      "id": "windows-cross-shell-env-vars",
+      "title": "Backgrounded processes on Windows drop your env vars",
+      "description": "Prefixing env vars on a backgrounded command from Git Bash silently fails to pass them on. Set them inside the process's own shell with a wrapper script.",
+      "topic": "gotchas",
+      "path": "gotchas/windows-cross-shell-env-vars.md",
+      "tags": [
+        "windows",
+        "powershell",
+        "git-bash",
+        "env"
+      ],
+      "updated": "2026-08-08",
+      "status": "current",
+      "source": "a PHP web app's test setup, where it happened more than once"
+    }
+  ]
+}

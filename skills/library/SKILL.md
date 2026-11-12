@@ -5,11 +5,12 @@ description: Use when saving durable knowledge to the cross-project library or u
 
 # Filing to the Library
 
-> **Not included in this repository:** the library's own tooling
-> (`tools/build-index.mjs`, which validates frontmatter and regenerates the
-> index, and `templates/doc-template.md`). The skill is published for the
-> filing procedure and the frontmatter rules. Steps 3 and 5 need your own
-> builder and template.
+> **In this repository:** [`library/`](../../library/README.md) is a starter
+> `<library-root>` with the builder (`tools/build-index.mjs`), its tests, the
+> document template and six example documents. Copy that folder, delete the
+> examples, and this skill runs as written. One difference: no dashboard
+> template ships, so the builder there writes `INDEX.md` and `index.json` and
+> skips `dashboard.html` until you add a template of your own.
 
 `<library-root>` is the global two-tier knowledge library (index always loaded,
 documents on demand). This skill is the *how* of filing; the *when* is your
