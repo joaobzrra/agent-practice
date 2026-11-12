@@ -95,6 +95,52 @@ test("a short claim uses room a long one could not", () => {
   assert.deepEqual(rendered.titled, ["CLM-b-big"]);
 });
 
+test("a claim with detail is sent as its statement, marked, and the detail stays in the ledger", () => {
+  const evidence = "Measured on the replica: forty seconds behind one vacuum. ".repeat(40);
+  const ledger = {
+    claims: [
+      claim({ id: "CLM-a-with", scope: { topics: ["alpha"], paths: [], entities: [] }, statement: "Set a timeout before any change.", detail: evidence }),
+      claim({ id: "CLM-b-without", scope: { topics: ["alpha"], paths: [], entities: [] }, statement: "Plain rule." })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const rendered = renderPack(routeContext(ledger, { prompt: "alpha" }), { displayName: "Test" });
+  assert.match(rendered.text, /Set a timeout before any change\. \[\+detail\]\n/);
+  assert.match(rendered.text, /Plain rule\.\n/, "a claim without detail carries no mark");
+  assert.equal(rendered.text.includes("forty seconds"), false, "the detail itself is never sent");
+  assert.equal(rendered.text.split("expand --claim <id>").length, 2, "where to read it is said once");
+  assert.ok(rendered.text.length < 600, "2,000 characters of evidence cost the message one line");
+
+  // The line that says where the detail is counts against the budget like
+  // any other, and goes only with a marked claim that was given whole.
+  const tight = renderPack(routeContext(ledger, { prompt: "alpha" }), { displayName: "Test", budget: 260 });
+  assert.ok(tight.text.length <= 260);
+  const plain = renderPack(routeContext({ ...ledger, claims: [ledger.claims[1]] }, { prompt: "alpha" }), { displayName: "Test" });
+  assert.equal(plain.text.includes("[+detail]"), false);
+  assert.equal(plain.text.includes("expand --claim"), false, "a pack with no marked claim does not mention it");
+});
+
+test("editing only a claim's detail does not send the claim again", () => {
+  // The conversation holds the statement. A change to text it was never
+  // sent is not a change to what it knows.
+  const own = makeProject();
+  const stateRoot = tempDir("ledger-delivery-");
+  const run = prompt => context(buildHookOutput("UserPromptSubmit", { session_id: "detail-edit", prompt }, { root: own.root, stateRoot }));
+  const edit = change => {
+    const path = join(own.root, "context", "claims.json");
+    const claims = JSON.parse(readFileSync(path, "utf8"));
+    change(claims.find(item => item.id === "CLM-reminders-sent-once"));
+    writeFileSync(path, JSON.stringify(claims, null, 2), "utf8");
+  };
+  assert.match(run("reword reminder email"), /records that it sent before it queues/);
+  edit(item => { item.detail = "Found on 2026-03-02: a retry sent the same reminder three times."; });
+  const second = run("reword reminder email");
+  assert.equal(second.includes("records that it sent before it queues"), false, "not sent whole again");
+  assert.equal(second.includes("Changed since"), false, "and not announced as changed");
+  assert.match(second, /Given earlier in this session and relevant again[^\n]*`CLM-reminders-sent-once`/);
+});
+
 test("titles that do not fit either are counted, never dropped silently", () => {
   const rendered = renderPack(routeContext(bigLedger, { prompt: "alpha beta" }), { displayName: "Test", budget: 700 });
   assert.ok(rendered.text.length <= 700);

@@ -148,6 +148,12 @@ above `src/`. So the folder has to sit at exactly
    The allowed values for each field are in `context/schemas/claim.schema.json`.
    `authority.source` is free text or a file name.
 
+   A claim may also carry `"detail": "..."`, a longer text that the hook never
+   sends: measurements, how the problem was found, what was ruled out. The
+   claim is then sent as its statement followed by `[+detail]`, and
+   `node src/cli.mjs expand --claim <id>` prints both. Write the statement so
+   that a session which never reads the detail still does the right thing.
+
 7. Run the two gates. `validate` must print `valid: 1 claims, ...`:
 
    ```
@@ -261,6 +267,10 @@ These did not fit in this message. Before acting in one's area, read it whole: `
 - [CLM-prices-in-cents] Prices are stored as whole cents
 ```
 
+A claim that has a `detail` field is sent as its statement with `[+detail]`
+after it, and one line under the claims says which command prints the rest.
+The detail itself is never sent.
+
 A statement is never cut in the middle. One that is too long for the room left
 keeps its title, and a shorter claim further down the list may take the room.
 One prompt or file read brings at most 24 claims the conversation does not
@@ -312,7 +322,8 @@ Retrieval matches words and paths. It does not understand meaning.
 
 - A word of three or more characters that the prompt shares with the claim's
   title, topics or entities adds 4. Those say what the claim is about.
-- A word the prompt shares only with the claim's statement adds 2.
+- A word the prompt shares only with the claim's statement or its `detail`
+  adds 2.
 - A file the agent read or edited, a path given with `--paths`, or a path
   written in the prompt adds 12 when it is inside one of the claim's
   `scope.paths` (or is a folder that contains one). Folders match at a
@@ -365,8 +376,8 @@ All of these were checked against the code or by running it.
 - **A long statement arrives as a title.** A message holds 9,000 characters.
   About twenty claims of 400 characters fit, or two of 3,000. `validate` warns
   about any statement over 3,000 characters, and `evaluate` lists the expected
-  claims that did not fit. The remedy is a shorter statement, with the detail
-  in the document it cites.
+  claims that did not fit. The remedy is a shorter statement, with the
+  evidence moved to the claim's `detail` field.
 - **Once given, a claim is not sent again until the conversation is emptied
   or the claim is changed.** In a very long conversation a rule sent at the start is far behind the
   current work. Later prompts that match it name it in one line, and that line
@@ -409,7 +420,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-105 tests. They build an invented project in a temp folder
+109 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

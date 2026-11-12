@@ -3,6 +3,7 @@
     "id": "CLM-bookings-table-lock",
     "title": "A bare ALTER on the bookings table blocks every page that reads it",
     "statement": "The `bookings` table is read by every page load and by the nightly reporting job. A bare `ALTER TABLE bookings` waits behind any long read, and every new read then queues behind the ALTER, so the site hangs until it finishes. Run schema changes on `bookings` with `SET lock_timeout = '3s'` and retry, never inside the reporting window (02:00 to 03:00).",
+    "detail": "Found on 2026-03-02. A migration that added an index started at 02:10, while the reporting job held a read on `bookings` for eleven minutes. Every request to the site hung for those eleven minutes. With `lock_timeout` the ALTER gives up after three seconds and the retry loop starts it again; on 2026-03-09 the same migration went through on its third attempt in under a second.",
     "kind": "hazard",
     "state": "verified",
     "authority": {

@@ -8,6 +8,7 @@
     "id": { "type": "string", "pattern": "^CLM-[a-z0-9-]+$" },
     "title": { "type": "string", "minLength": 3 },
     "statement": { "type": "string", "minLength": 8 },
+    "detail": { "type": "string", "minLength": 1 },
     "kind": { "enum": ["invariant", "fact", "intent", "hazard", "conflict"] },
     "state": { "enum": ["proposed", "accepted", "verified", "enforced", "contested", "superseded"] },
     "authority": {

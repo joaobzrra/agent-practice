@@ -32,6 +32,26 @@ test("expand returns one whole claim by id", () => {
   assert.equal(claim.evidence.length, 1);
 });
 
+test("a claim may carry a detail: validate accepts it, expand prints it, an empty one is an error", () => {
+  const own = makeProject({ install: true });
+  const path = join(own.root, "context", "claims.json");
+  const cli = (...args) => spawnSync(process.execPath, [own.cli, ...args], { encoding: "utf8" });
+  const write = detail => {
+    const claims = JSON.parse(readFileSync(path, "utf8"));
+    claims.find(claim => claim.id === "CLM-orders-table-lock").detail = detail;
+    writeFileSync(path, JSON.stringify(claims, null, 2), "utf8");
+  };
+  write("Seen on 2026-03-02: the site hung for four minutes behind one ALTER.");
+  const valid = cli("validate");
+  assert.equal(valid.status, 0, valid.stdout + valid.stderr);
+  assert.equal(JSON.parse(cli("expand", "--claim", "CLM-orders-table-lock").stdout).detail, "Seen on 2026-03-02: the site hung for four minutes behind one ALTER.");
+  const routed = cli("route", "--prompt", "alter the orders table", "--format", "markdown").stdout;
+  assert.match(routed, /Set a lock timeout and retry\. \[\+detail\]/);
+  assert.equal(routed.includes("four minutes"), false);
+  write("");
+  assert.notEqual(cli("validate").status, 0, "an empty detail is a mistake, not a claim without one");
+});
+
 test("audit-documents finds every narrative file registered", () => {
   assert.match(run("audit-documents"), /document registry covers 2 narrative files/);
 });

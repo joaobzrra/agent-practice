@@ -151,6 +151,9 @@ question — `"primary-domain"`, `"hosting-tier"`. Two active claims sharing a k
 raise a warning; two where one is `enforced` raise an error. Use it for facts
 that have exactly one correct answer at a time.
 
+`detail` (optional) is a longer text kept beside the statement and never sent
+by the hook. The next section says what goes in it.
+
 ### The statement is the whole claim
 
 The statement is what a future session reads, usually with no other context. It
@@ -172,10 +175,26 @@ session that reads the first one has learned nothing it can act on.
 **Keep it under about 600 characters.** The hook sends a claim whole or not at
 all, in a message that holds 9,000 characters. A claim that does not fit
 arrives as its title and a command to read the rest. The good example above is
-362 characters. If the explanation needs more, put it in a document, cite the
-document in `authority.source`, and keep the statement to what the next
-session must do. `validate` warns once a statement passes 3,000 characters;
+362 characters. `validate` warns once a statement passes 3,000 characters;
 that is the point of failure, not the target.
+
+**What does not fit goes in `detail`.** `detail` is an optional second text
+on the claim, of any length: the measurements, how the problem was found, the
+cases that were ruled out. The hook never sends it. A claim that has one is
+sent as its statement followed by `[+detail]`, and the message says once
+which command prints the rest (`expand --claim <id>`). Words in `detail` are
+matched like words in the statement, so moving text there does not change
+which prompts find the claim.
+
+The test for what stays in the statement: a session that reads only the
+statement, and never runs `expand`, must still do the right thing. Evidence
+that a careful reader would want before overturning the claim belongs in
+`detail`. A step the next session must take does not.
+
+To shorten a statement that already exists, put the old text in `detail`
+unchanged and write the new statement above it. Nothing is lost, and a
+conversation that holds the old wording is sent the new one once, marked as
+changed.
 
 ## Making sure it will actually be found
 
@@ -184,6 +203,7 @@ the claim was worth writing.
 
     word in title, topics, entities   ->   +4 per distinct word
     word only in the statement        ->   +2 per distinct word
+    word only in the detail           ->   +2 per distinct word
     path inside scope.paths           ->  +12 each (a file read or edited,
                                            --paths, or a path in the prompt)
     words and paths together under 4  ->   count as 0: no match
@@ -393,7 +413,8 @@ Two warnings do not fail the run and should not be left standing:
   message, so some rule marked "always" starts every session as a title.
   Shorten those statements or demote a universal flag.
 - `long-statement` — a statement is over 3,000 characters and will usually
-  arrive as a title. Move the detail to a document and cite it.
+  arrive as a title. Keep the trigger, the symptom and the correction in the
+  statement and move the rest to `detail`.
 
 Then, if and only if the ledger is committed in this project (`git
 check-ignore -v context/claims.json` prints nothing), stage `context/`

@@ -323,6 +323,20 @@ test("one word found only in a statement is not enough, two are", () => {
   assert.equal(routes("explain lock"), true, "one word from the title");
 });
 
+test("words in a claim's detail count like words in its statement", () => {
+  // A statement is shortened by moving its evidence into `detail`. Every
+  // prompt that found the long statement has to find the short one, or
+  // shortening a ledger would quietly lose retrievals.
+  const long = "Every page load will read the bookings table first. Measured on the replica: forty seconds behind one vacuum.";
+  const before = { claims: [claim({ id: "CLM-prose", title: "Table lock", statement: long })], documents: [], scenarios: [] };
+  const after = { claims: [claim({ id: "CLM-prose", title: "Table lock", statement: "Set a timeout before any change.", detail: long })], documents: [], scenarios: [] };
+  for (const prompt of ["read that file", "read the first line", "replica vacuum", "explain lock", "timeout"]) {
+    assert.equal(idsFrom(routeContext(after, { prompt })).has("CLM-prose"), idsFrom(routeContext(before, { prompt })).has("CLM-prose"), `"${prompt}" routes as it did before the text moved`);
+  }
+  assert.equal(idsFrom(routeContext(after, { prompt: "replica vacuum" })).has("CLM-prose"), true, "two words found only in the detail are a match");
+  assert.equal(idsFrom(routeContext(after, { prompt: "vacuum" })).has("CLM-prose"), false, "one is not, as in a statement");
+});
+
 test("a path matches at a folder boundary, not in the middle of a name", () => {
   const fixture = {
     claims: [claim({ id: "CLM-app", scope: { topics: ["zzzz"], paths: ["src/app"], entities: [] } })],

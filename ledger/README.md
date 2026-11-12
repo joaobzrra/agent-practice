@@ -24,7 +24,7 @@ npm install
 node src/cli.mjs route --prompt "add a notes column to the bookings table" --paths db/migrations/0042_booking_notes.sql --limit 2 --format markdown
 ```
 
-That prints the first pack below. `npm run ci` runs the tool's 105 tests and
+That prints the first pack below. `npm run ci` runs the tool's 109 tests and
 then checks this ledger.
 
 ## How often it runs
@@ -119,7 +119,9 @@ default limit is 24, and with four claims everything would fit.
 - [CLM-customer-copy-spanish] (accepted, user) Everything a customer or a restaurant reads (pages, emails, error messages, SMS) is written in Spanish. Code, comments, commit messages and logs are English. Decided by the owner; do not translate customer copy into English to match the code.
 
 ## Current verified facts
-- [CLM-bookings-table-lock] (verified, session) The `bookings` table is read by every page load and by the nightly reporting job. A bare `ALTER TABLE bookings` waits behind any long read, and every new read then queues behind the ALTER, so the site hangs until it finishes. Run schema changes on `bookings` with `SET lock_timeout = '3s'` and retry, never inside the reporting window (02:00 to 03:00).
+- [CLM-bookings-table-lock] (verified, session) The `bookings` table is read by every page load and by the nightly reporting job. A bare `ALTER TABLE bookings` waits behind any long read, and every new read then queues behind the ALTER, so the site hangs until it finishes. Run schema changes on `bookings` with `SET lock_timeout = '3s'` and retry, never inside the reporting window (02:00 to 03:00). [+detail]
+
+[+detail] means the ledger holds the evidence and background of that claim: `node tools/context-ledger/src/cli.mjs expand --claim <id>`
 
 ## Also matched, by title only
 These did not fit in this message. Before acting in one's area, read it whole: `node tools/context-ledger/src/cli.mjs expand --claim <id>`
@@ -177,6 +179,10 @@ edited is the only one that knows which file is in play.
   claims of 400 characters fit one message whole, seventeen of 450, thirteen
   of 600. A statement of 3,000 characters takes a third of
   the room and will often arrive as a title. `validate` warns about those.
+- **The evidence has its own field.** `CLM-bookings-table-lock` carries a
+  `detail`: when the problem was found and what was measured. The hook sends
+  the statement, marks it `[+detail]`, and leaves the rest one command away.
+  Words in the detail still count when a prompt is matched.
 - **The words a prompt will use are in the title and topics.** A word there
   counts double and is enough alone. A word buried in the statement needs
   company.

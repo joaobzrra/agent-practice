@@ -259,7 +259,7 @@ export function semanticIssues(ledger) {
   } catch { /* reported by the schema check */ }
   const long = active.filter(claim => typeof claim.statement === "string" && claim.statement.length > packCharBudget / 3).map(claim => claim.id);
   if (long.length) {
-    issues.push({ level: "warning", code: "long-statement", message: `${long.length} statement${long.length === 1 ? " is" : "s are"} longer than ${packCharBudget / 3} characters, a third of what one message holds, and will often arrive as a title only: ${long.join(", ")}` });
+    issues.push({ level: "warning", code: "long-statement", message: `${long.length} statement${long.length === 1 ? " is" : "s are"} longer than ${packCharBudget / 3} characters, a third of what one message holds, and will often arrive as a title only. Keep the trigger, the symptom and the correction in \`statement\` and move the evidence to \`detail\`: ${long.join(", ")}` });
   }
   return issues;
 }
@@ -432,7 +432,10 @@ function scoreClaim(claim, promptTokens, pathValues, mentions) {
   let match = 0;
   const about = tokens([...claim.scope.topics, ...claim.scope.entities, claim.title].join(" "));
   for (const token of about) if (promptTokens.has(token)) match += 4;
-  for (const token of tokens(claim.statement)) if (!about.has(token) && promptTokens.has(token)) match += 2;
+  // `detail` is never sent, and its words still count like the statement's.
+  // A statement shortened by moving its evidence into `detail` is found by
+  // every prompt that found it before.
+  for (const token of tokens(`${claim.statement} ${claim.detail ?? ""}`)) if (!about.has(token) && promptTokens.has(token)) match += 2;
   for (const claimPath of claim.scope.paths.map(comparablePath)) {
     for (const inputPath of pathValues) if (under(inputPath, claimPath) || under(claimPath, inputPath)) match += 12;
     if (mentions.some(mention => mentionHits(mention, claimPath))) match += 12;
@@ -568,7 +571,7 @@ function assemble(selected, { droppedMandatory, standing, matched, cut }) {
   // anything that has to choose between claims reads `priority` instead.
   const output = { bindingInvariants: [], currentVerifiedFacts: [], acceptedIntent: [], openConflicts: [], requiredEvidence: [], verificationCommands: [], expansionHandles: [], droppedMandatory, priority: selected.map(claim => claim.id), standing, matched, cut };
   for (const claim of selected) {
-    const compact = { id: claim.id, title: claim.title, statement: claim.statement, state: claim.state, authority: claim.authority, provenance: claim.evidence.map(item => ({ path: item.path, locator: item.locator, verifiedAtCommit: item.verifiedAtCommit })) };
+    const compact = { id: claim.id, title: claim.title, statement: claim.statement, ...(claim.detail ? { hasDetail: true } : {}), state: claim.state, authority: claim.authority, provenance: claim.evidence.map(item => ({ path: item.path, locator: item.locator, verifiedAtCommit: item.verifiedAtCommit })) };
     output[classify(claim)].push(compact);
     output.expansionHandles.push(claim.id);
     for (const evidence of claim.evidence) {
@@ -598,6 +601,8 @@ const packSections = [
 // The command an agent runs to read one claim whole. Derived from where this
 // file sits, which is always tools/context-ledger/src inside the project.
 const expandCommand = `node ${normalizePath(relative(repoRoot, join(here, "cli.mjs")))} expand --claim <id>`;
+// Set after the statement of a claim that has a `detail` field.
+const detailMark = "[+detail]";
 
 /**
  * Turn a routed pack into the text a session receives, inside `budget`
@@ -658,8 +663,11 @@ export function renderPack(pack, { displayName = loadConfig().displayName, budge
       const members = fresh.filter(id => full.has(id) && sectionOf.get(id) === key);
       if (!members.length) continue;
       lines.push(`\n## ${title}`);
-      for (const id of members) { const claim = claims.get(id); lines.push(`- [${id}] (${claim.state}, ${claim.authority.kind}) ${claim.statement}`); }
+      for (const id of members) { const claim = claims.get(id); lines.push(`- [${id}] (${claim.state}, ${claim.authority.kind}) ${claim.statement}${claim.hasDetail ? ` ${detailMark}` : ""}`); }
     }
+    // A statement says what to do. The evidence behind it stays in the
+    // ledger, and the agent is told where, once per message.
+    if (fresh.some(id => full.has(id) && claims.get(id).hasDetail)) lines.push(`\n${detailMark} means the ledger holds the evidence and background of that claim: \`${expandCommand}\``);
     if (titled.length || omitted) {
       lines.push("\n## Also matched, by title only", `These did not fit in this message. Before acting in one's area, read it whole: \`${expandCommand}\``);
       for (const id of titled) lines.push(titles.get(id) ? `- [${id}] ${titles.get(id)}` : `- [${id}]`);
@@ -801,6 +809,7 @@ export function dashboardSnapshot(ledger, {
       id: claim.id,
       title: claim.title,
       statement: claim.statement,
+      ...(claim.detail ? { detail: claim.detail } : {}),
       kind: claim.kind,
       state: claim.state,
       severity: claim.severity,
