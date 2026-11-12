@@ -7,7 +7,7 @@
 // are about size and repetition, not about which claims match.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { buildHookOutput } from "../src/hook.mjs";
@@ -459,6 +459,24 @@ test("a resume is sent only what changed while the session was away", () => {
   edit(item => { item.state = "superseded"; });
   assert.match(run("SessionStart", { source: "resume" }), /No longer in force[^\n]*`CLM-refund-window`/, "a standing claim withdrawn meanwhile is said to be");
   assert.equal(run("SessionStart", { source: "resume" }), "", "once");
+});
+
+test("a file that is not there yet is still inside the project when the project has two spellings", () => {
+  // A CI runner's temp folder and a linked checkout both give one folder two
+  // spellings. The file a tool names may not exist (a read that failed, a
+  // path about to be written), so its real spelling has to be taken from the
+  // nearest folder that does exist. Compared as typed, the file looks like
+  // it is outside the project and its claims are never sent.
+  const stateRoot = tempDir("ledger-delivery-");
+  const link = join(tempDir("ledger-link-"), "project");
+  symlinkSync(project.root, link, "junction");
+  try {
+    const read = { session_id: "linked", tool_name: "Read", tool_input: { file_path: join(link, "db", "migrations", "0007_notes.sql") } };
+    assert.match(context(hook("PostToolUse", read, stateRoot)), /A bare ALTER TABLE/);
+  } finally {
+    // The link only, never what it points at.
+    try { unlinkSync(link); } catch { rmdirSync(link); }
+  }
 });
 
 test("a message fits even when ids alone would fill it", () => {

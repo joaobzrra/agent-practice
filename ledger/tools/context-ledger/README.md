@@ -409,7 +409,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-104 tests. They build an invented project in a temp folder
+105 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

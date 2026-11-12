@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { activeStates, fit, gitHead, loadLedger, packCharBudget, packOf, renderPack, renderSessionStart, repoRoot as defaultRoot, routeContext, routingBudget, sessionStartBudget, sessionTailRoom, stableJson, withoutWorktree } from "./ledger.mjs";
@@ -102,9 +102,22 @@ function repositoryState(root) {
 // Claude Code passes an absolute path with the platform's separators. Both
 // sides go through realpath first: a temp folder or a linked checkout can
 // have two spellings, and compared as typed they look like different places.
+//
+// The file itself may not exist: a read that failed, a path about to be
+// written. realpath throws on those, so the real spelling is taken from the
+// nearest folder that does exist and the rest of the path is put back on.
 function projectPath(root, file) {
   if (typeof file !== "string" || !file) return null;
-  const real = path => { try { return realpathSync.native(path); } catch { return path; } };
+  const real = path => {
+    const missing = [];
+    for (let current = path; ;) {
+      try { return join(realpathSync.native(current), ...missing); } catch { /* not there: try the folder above */ }
+      const parent = dirname(current);
+      if (parent === current) return path;
+      missing.unshift(basename(current));
+      current = parent;
+    }
+  };
   const inside = relative(real(root), real(resolve(root, file)));
   if (!inside || inside.startsWith("..") || isAbsolute(inside)) return null;
   return withoutWorktree(inside.replaceAll("\\", "/"));
