@@ -1,0 +1,100 @@
+[
+  {
+    "id": "CLM-bookings-table-lock",
+    "title": "A bare ALTER on the bookings table blocks every page that reads it",
+    "statement": "The `bookings` table is read by every page load and by the nightly reporting job. A bare `ALTER TABLE bookings` waits behind any long read, and every new read then queues behind the ALTER, so the site hangs until it finishes. Run schema changes on `bookings` with `SET lock_timeout = '3s'` and retry, never inside the reporting window (02:00 to 03:00).",
+    "kind": "hazard",
+    "state": "verified",
+    "authority": {
+      "kind": "session",
+      "source": "HANDOFF-2026-03-02.md",
+      "decidedAt": "2026-03-02T00:00:00Z"
+    },
+    "scope": {
+      "topics": ["migration", "schema", "database", "bookings", "lock", "alter"],
+      "paths": ["db/migrations"],
+      "entities": ["bookings", "lock_timeout", "ALTER TABLE"]
+    },
+    "universal": false,
+    "severity": "critical",
+    "relationships": [],
+    "evidence": [],
+    "history": [
+      { "from": null, "to": "accepted", "at": "2026-03-02T00:00:00Z", "actor": "session", "source": "HANDOFF-2026-03-02.md" },
+      { "from": "accepted", "to": "verified", "at": "2026-03-09T00:00:00Z", "actor": "session", "source": "HANDOFF-2026-03-09.md" }
+    ]
+  },
+  {
+    "id": "CLM-customer-copy-spanish",
+    "title": "Customer-facing text is Spanish; code and commits are English",
+    "statement": "Everything a customer or a restaurant reads (pages, emails, error messages, SMS) is written in Spanish. Code, comments, commit messages and logs are English. Decided by the owner; do not translate customer copy into English to match the code.",
+    "kind": "invariant",
+    "state": "accepted",
+    "authority": {
+      "kind": "user",
+      "source": "CLAUDE.md",
+      "decidedAt": "2026-01-15T00:00:00Z"
+    },
+    "scope": {
+      "topics": ["copy", "language", "email", "translation", "text"],
+      "paths": ["src/emails", "src/pages"],
+      "entities": ["es"]
+    },
+    "universal": true,
+    "severity": "high",
+    "relationships": [],
+    "evidence": [],
+    "history": [
+      { "from": null, "to": "accepted", "at": "2026-01-15T00:00:00Z", "actor": "user", "source": "CLAUDE.md" }
+    ]
+  },
+  {
+    "id": "CLM-reminder-emails-idempotent",
+    "title": "Reminder emails are sent once per booking, keyed on the booking id",
+    "statement": "The reminder job may run twice for the same hour after a restart. It must never send a second reminder: it records `reminder_sent_at` on the booking in the same transaction that queues the email, and skips any booking where that column is set. A change to `src/jobs/reminders.ts` that queues before recording brings back the duplicate emails customers complained about in February.",
+    "kind": "invariant",
+    "state": "enforced",
+    "authority": {
+      "kind": "implementation",
+      "source": "src/jobs/reminders.ts",
+      "decidedAt": "2026-02-20T00:00:00Z"
+    },
+    "scope": {
+      "topics": ["reminder", "email", "job", "duplicate", "idempotent"],
+      "paths": ["src/jobs/reminders.ts", "src/emails"],
+      "entities": ["reminder_sent_at"]
+    },
+    "universal": false,
+    "severity": "high",
+    "relationships": [],
+    "evidence": [],
+    "history": [
+      { "from": null, "to": "accepted", "at": "2026-02-20T00:00:00Z", "actor": "session", "source": "HANDOFF-2026-02-20.md" },
+      { "from": "accepted", "to": "enforced", "at": "2026-02-24T00:00:00Z", "actor": "session", "source": "src/jobs/reminders.test.ts" }
+    ]
+  },
+  {
+    "id": "CLM-waiting-list-not-decided",
+    "title": "Whether a waiting-list customer is auto-booked or only notified is undecided",
+    "statement": "When a table frees up, the waiting list could book the first customer automatically or only notify them. The owner has not chosen. Do not implement either as the default; build the notification path only and ask before adding automatic booking.",
+    "kind": "conflict",
+    "state": "contested",
+    "authority": {
+      "kind": "session",
+      "source": "HANDOFF-2026-04-11.md",
+      "decidedAt": "2026-04-11T00:00:00Z"
+    },
+    "scope": {
+      "topics": ["waiting", "waitlist", "booking", "notify"],
+      "paths": ["src/waiting-list"],
+      "entities": ["waiting list"]
+    },
+    "universal": false,
+    "severity": "medium",
+    "relationships": [],
+    "evidence": [],
+    "history": [
+      { "from": null, "to": "contested", "at": "2026-04-11T00:00:00Z", "actor": "session", "source": "HANDOFF-2026-04-11.md" }
+    ]
+  }
+]

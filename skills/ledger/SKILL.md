@@ -9,7 +9,8 @@ description: Use when a decision, ruling, correction, gotcha or constraint lands
 > drives (`tools/context-ledger`, its CLI and its hook). The skill is published
 > for the method: the claim schema, how retrieval scores a claim, and the
 > gates. The commands below will not run until you supply your own
-> implementation of that package.
+> implementation of that package. [`example/`](example/README.md) shows the
+> tool's real output for three prompts against four invented claims.
 
 A project's ledger is the thing that stops a session asking a question the
 project already answered. It is not documentation and not memory — it is a set

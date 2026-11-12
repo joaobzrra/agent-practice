@@ -206,6 +206,13 @@ Its scoring rules are tuned, not guessed — token-overlap weights, a 2-characte
 token floor, a measured per-prompt budget — because a ledger that injects
 everything is just a slower prompt.
 
+It is the most-used piece of this setup. In the author's session logs a ledger
+pack reached 93 of 259 main sessions, counting every project, with or without
+a ledger. [`skills/ledger/example/`](skills/ledger/example/README.md) runs
+three prompts against four invented claims and shows what the agent received
+each time. The tool that does the scoring is not published here; the skill
+documents its method.
+
 ## Knowledge library
 
 [`library/`](library/README.md) is where knowledge that outlives one project
