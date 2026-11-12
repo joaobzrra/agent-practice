@@ -76,7 +76,7 @@ So the system is built on one idea:
 | **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
-| **`ledger/`** | The decision ledger as a tool you can copy into a project: a CLI, a hook, three schemas and 57 tests, set inside an invented example project with real output. Needs Node 24 and two packages. |
+| **`ledger/`** | The decision ledger as a tool you can copy into a project: a CLI, a hook, three schemas and 104 tests, set inside an invented example project with real output. Needs Node 24 and two packages. |
 | **`library/`** | A starter cross-project knowledge library: the index builder with its tests, a document template, and six example entries. |
 | **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it and a first CI run that found a fifth. |
 
@@ -203,26 +203,32 @@ constraints, written when a decision lands rather than reconstructed at session
 close. It answers the question that wastes the most time on long projects:
 *why is it like this, and did we already decide this?*
 
-Its scoring rules are tuned, not guessed — token-overlap weights, a 2-character
-token floor, a measured per-prompt budget — because a ledger that injects
-everything is just a slower prompt.
+Its scoring rules are measured, not guessed: word weights, a minimum match,
+and a message size, each checked against real ledgers and replayed sessions,
+because a ledger that injects everything is just a slower prompt.
 
 It is the most-used piece of this setup. In the author's session logs a ledger
 pack reached 93 of 259 main sessions, counting every project, with or without
 a ledger.
 
+Those logs also showed that nine packs in ten were too long for Claude Code's
+10,000-character limit on hook output, so the agent received a file path and
+the top of the list. The retrieval tests had passed the whole time: they
+checked which claims were chosen, never what arrived. The tool now builds
+every message to fit, sends each claim whole once per conversation, and sends
+a claim scoped to a file when the agent opens that file.
+[`ledger/README.md`](ledger/README.md) has the numbers before and after.
+
 The tool is in [`ledger/`](ledger/README.md). That folder is an invented
 project with the tool installed in it, so it runs as it is: three prompts
-against four invented claims, and what the agent received each time. It also
-shows what the tidy runs hide, such as that the hook in a live session scores
-the words of the prompt and never the files being edited.
+against four invented claims, and what a live session is sent, event by event.
 [`ledger/tools/context-ledger/README.md`](ledger/tools/context-ledger/README.md)
 has the steps to copy it into your own project, and its limits.
 
 ```console
 $ cd ledger/tools/context-ledger && npm ci && npm test
-ℹ tests 57
-ℹ pass 57
+ℹ tests 104
+ℹ pass 104
 ℹ fail 0
 ```
 

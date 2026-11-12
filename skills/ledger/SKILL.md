@@ -169,46 +169,97 @@ way it will actually appear:
 A session that reads the second one recognises the failure it is looking at. A
 session that reads the first one has learned nothing it can act on.
 
+**Keep it under about 600 characters.** The hook sends a claim whole or not at
+all, in a message that holds 9,000 characters. A claim that does not fit
+arrives as its title and a command to read the rest. The good example above is
+362 characters. If the explanation needs more, put it in a document, cite the
+document in `authority.source`, and keep the statement to what the next
+session must do. `validate` warns once a statement passes 3,000 characters;
+that is the point of failure, not the target.
+
 ## Making sure it will actually be found
 
 Retrieval is **lexical**, not semantic. This is the part that decides whether
 the claim was worth writing.
 
-    token overlap        ->   +2 each, over scope.topics/entities/title/statement
-    path prefix match    ->  +12 each, bidirectional startsWith
-    state 'contested'    ->   +3
-    score 0              -> not retrieved, unless the claim is universal or
-                            shares a conflictsWith component with a claim
-                            that is retrieved
+    word in title, topics, entities   ->   +4 per distinct word
+    word only in the statement        ->   +2 per distinct word
+    path inside scope.paths           ->  +12 each (a file read or edited,
+                                           --paths, or a path in the prompt)
+    words and paths together under 4  ->   count as 0: no match
+    state 'contested'                 ->   +3, added after that floor
+    score 0                           -> not retrieved, unless the claim is
+                                           universal or shares a conflictsWith
+                                           component with a claim that is
+
+A word counts once however many times it appears: a word in both the title and
+the topics is one +4, and a word in the title and the statement is +4, not +6.
+An entry in `scope.paths` is a folder (`db/migrations`) or one file; a file
+matches itself and a folder matches every file under it. A path written in a
+prompt matches the same way, and may be absolute or only the tail
+(`jobs/reminders.js`, `reminders.js`); `@src/x.js` and `src/x.js:42` are read
+as `src/x.js`. In a prompt it must end in a file name with an extension or
+exist in the project: `client/server` in a sentence is not a path. Filler
+words never count; the list is `stopWords` in
+`src/ledger.mjs` (about a hundred words such as "the", "that", "every";
+"read", "file" and "test" are not on it).
+Punctuation at the edge of a word is ignored.
 
 Claims are admitted in two tiers. **Universal claims and anything sharing a
 `conflictsWith` component with them go first**, regardless of score — that is
 what `universal` buys. Everything else competes on score. Within the mandatory
 tier, overflow drops by lowest **severity** first; within the scoped tier, by
-lowest **score**. Ties break on id.
+lowest **score**. Ties break on id. That order is also who gets the room in
+the message: a low score is the first to arrive as a title.
 
-Four rules follow, in order of how much they matter:
+When each kind of claim reaches a session:
 
-1. **List `scope.paths`, and do not rely on them.** A path match is worth six
-   times a word match, but only where paths are supplied: `route --paths` and
-   scenarios. The hook that runs on each prompt passes the prompt text and no
-   file list, so in a live session a claim is found by its words alone. If the
-   claim is about files, list them, and also give it the words a prompt about
-   those files would contain.
-2. **Add local-language terms beside the English ones** in `topics`, if the
+    universal or contested -> when the session starts, and at the start of
+                              every subagent
+    matched by words       -> with the prompt that matches
+    matched by a path      -> next to the first read or edit of a file under
+                              that path (the PostToolUse hook), or with a
+                              prompt that spells the path out
+
+Each claim is sent whole **once** per conversation. After that, a prompt that
+matches it gets one line naming it. A compaction or a clear starts over, and
+so does a change to the claim: edit its statement or contest it in the middle
+of a session and the new wording is sent, marked as changed. Supersede it and
+the conversation is told once that it is no longer in force, with the claim
+that replaced it. A subagent is a conversation of its own: it starts with the universal and
+contested claims whole, and what it is sent is not counted as sent to the main
+session, or the other way round. A subagent that opens a file gets that
+file's claim whole even when the main session already has it, and the main
+session gets it whole the first time it opens the file itself.
+
+A claim that arrived only as a title is not counted as sent: the next prompt
+or file that matches it tries again to send it whole. A contested claim that
+a prompt does not match is not announced again on later prompts; one the
+prompt does match gets the one-line pointer like any other. With no match its
+score is 3, the lowest there is, so in a crowded message it is the first to
+shrink to a title; at the start of a session it competes only with the
+universal claims.
+
+Five rules follow, in order of how much they matter:
+
+1. **Put the words a prompt will use in `title` and `topics`.** One word there
+   is a match. One word that appears only in the statement is not: it takes
+   two different words. List the singular and the plural, since `reminders` does not match
+   `reminder`.
+2. **Scope a claim about files with `scope.paths`, and give it words too.** A
+   path is the strongest match there is, and it fires when the agent opens the
+   file. That can be after a prompt has already set the direction, and it does
+   not fire at all in a project whose `settings.json` lacks the `PostToolUse`
+   entry. Words in the topics cover the prompt; the path covers the file.
+3. **Add local-language terms beside the English ones** in `topics`, if the
    operator prompts in more than one language. A prompt in the other language
    scores zero against English-only topics.
-3. **Tokens of 2 characters or fewer are discarded entirely.** `db`, `ui`, `s3`
+4. **Tokens of 2 characters or fewer are discarded entirely.** `db`, `ui`, `s3`
    do nothing. Spell them out somewhere in the claim.
-4. **`universal: true` is expensive — default to `false`.** Universal claims are
-   injected on every prompt in the project forever, and the routing budget is
-   the ceiling every prompt can be made to pay. Measured on a real project
-   ledger (2026-08-23, 50 active claims): the always-inject closure is 2 claims, a
-   typical scoped prompt routes 2-9 claims for roughly 125-680 tokens, and a
-   pack filled to the budget of 24 renders about **4.4k tokens**. Each new
-   universal flag moves the floor toward that ceiling on every prompt forever.
-   Reserve it for rules that are genuinely wrong to ever act without, and reach
-   for `scope.paths` first.
+5. **`universal: true` is expensive — default to `false`.** A universal claim
+   opens every session and every subagent, whole, and takes its room before
+   any claim the prompt actually asked for. Reserve it for rules that are
+   wrong to ever act without, and reach for `scope.paths` first.
 
 ### Prove it, don't hope
 
@@ -227,22 +278,30 @@ to actually type:
 `id` matches `^SCN-[a-z0-9-]+$`; `name`, `prompt`, `paths` and `expectedClaims`
 are all required, and `expectedClaims` needs at least one entry.
 
-Then confirm retrieval directly, **without `--paths`**, because that is what
-the hook sees in a live session:
+Then confirm retrieval directly, **without `--paths`**, because a prompt
+arrives before any file is opened:
 
 ```bash
 cd <project>/tools/context-ledger
-node src/cli.mjs route --prompt "add a notes column to the bookings table"
+node src/cli.mjs route --prompt "add a notes column to the bookings table" --format markdown
 ```
 
-If the claim does not come back, the scope is wrong. Fix the scope, not the
-scenario. A scenario that passes only because of its `paths` proves less than
-it looks: add the missing words to the claim's topics.
+Read the output for two things. The claim must be there, and it must be there
+**whole**: under its own heading with its statement, not in the list headed
+"Also matched, by title only". If it is missing, the scope is wrong. Fix the
+scope, not the scenario; a scenario that passes only because of its `paths`
+means the claim waits for a file to be opened. If it is there by title only,
+it lost the room to claims that scored higher or it is too long: shorten the
+statement, or give it the topic words that make it score.
 
-Then route one prompt that has nothing to do with the claim. It should not
-come back. In a small ledger most sentences share a word with most claims, so
-the first check passes for almost anything; the unrelated prompt is the one
-that shows whether the claim's words are selective.
+Then route one prompt that has nothing to do with the claim. The answer should
+be `No claim routed for this prompt.`, or at least not this claim. A claim
+that comes back for unrelated prompts has topics that are too general.
+
+`node src/evaluate.mjs` runs every scenario. `correctnessFailures` must be
+empty. `expectedByTitleOnly` lists scenarios whose claim was chosen and did
+not fit; it does not fail the run, and each entry is a claim some session will
+not read.
 
 ## State, and changing it
 
@@ -291,15 +350,17 @@ Then append to the old claim's history:
 ### contest — you doubt it but cannot settle it
 
 Move the claim to `contested` and say why in the history `note`. Contested
-claims still route, and score **+3** so they surface more readily — the point is
-to get the disagreement in front of the next session rather than to hide the
-claim. Bring it to the operator; resolving it is a ruling, not a cleanup.
+claims still route, and score **+3**, which is enough with no match at all: a
+contested claim is sent at the start of every session beside the universal
+ones. The point is to get the disagreement in front of the next session rather
+than to hide the claim. Bring it to the operator; resolving it is a ruling,
+not a cleanup.
 
 ### an open question — nobody has decided yet
 
 Record it, so an agent does not settle it by accident: `"kind": "conflict"`,
 `"state": "contested"`, and a statement that says what is undecided and what
-to do in the meantime. It routes on every prompt until it is closed.
+to do in the meantime. It opens every session until it is closed.
 
 When the operator rules, do not rewrite the question into the answer. Write
 the ruling as a new claim (`intent` or `invariant`, `authority.kind` `user`)
@@ -318,26 +379,38 @@ node src/cli.mjs build-index     # regenerate the views; --check verifies instea
 `validate` must print `valid: N claims, ...`. Common failures:
 
 - `universal-overflow` — the always-inject set no longer fits `routingBudget`
-  (24). **Demote a universal claim to a scoped one; do not raise the budget as a
-  reflex.** Every point of budget is paid on every prompt.
+  (24 claims, the most one routing returns). **Demote a universal claim to a scoped one; do not raise the budget as a
+  reflex.** Every universal claim is paid for at the start of every session.
 - `history-state` — the last history entry disagrees with `state`.
 - `lifecycle` — an illegal transition; check the table above.
 - `single-value-conflict` — two active claims share a `singleValueKey` and one
   of them is `enforced`.
 - `broken-scenario-reference` — a scenario names a claim id that does not exist.
 
-Then, if and only if the ledger is committed in this project, stage
-`context/` and the regenerated views with the work they came from.
+Two warnings do not fail the run and should not be left standing:
+
+- `standing-overflow` — the universal and contested claims no longer fit one
+  message, so some rule marked "always" starts every session as a title.
+  Shorten those statements or demote a universal flag.
+- `long-statement` — a statement is over 3,000 characters and will usually
+  arrive as a title. Move the detail to a document and cite it.
+
+Then, if and only if the ledger is committed in this project (`git
+check-ignore -v context/claims.json` prints nothing), stage `context/`
+(`context/generated/` included, and a generated `AGENTS.md` if the project
+has one) with the work it came from.
 
 ## check — is the ledger still honest?
 
 Run periodically, and at session close:
 
 ```bash
+cd <project>/tools/context-ledger
 node src/cli.mjs validate
 node src/cli.mjs check-stale      # claims whose evidence anchors have drifted
 node src/cli.mjs dashboard        # authority, attention, evidence health
-node src/evaluate.mjs             # every scenario still retrieves its claims
+node src/evaluate.mjs             # every scenario still retrieves its claims,
+                                  # and which of them would arrive as a title
 ```
 
 Read the result for three things the tools will not tell you:
@@ -352,11 +425,18 @@ Read the result for three things the tools will not tell you:
 
 ## Watch for
 
-**The hook fails open and silent by design.** A broken hook prints nothing; a
-working one with no matching claim prints only the pack's heading line. Neither
-is visible unless you look. If a project's claims stop appearing, run
-`node src/cli.mjs validate`: malformed JSON in `context/` silences the hook,
-and nothing will tell you. The hook itself needs no installed packages;
+**The hook fails open and silent by design.** A broken hook prints nothing, and
+so does a working one when a prompt matches no claim. The sign of life is the
+block that opens a session, headed `# <project> routed context`. If a session
+starts without it, run `node src/cli.mjs validate`: malformed JSON in
+`context/` silences the hook, and nothing will tell you.
+
+**A claim you were given earlier is not sent again.** When a prompt's context
+says `Given earlier in this session and relevant again: CLM-...`, the rule is
+further up the conversation. If you cannot find it, read it:
+`node tools/context-ledger/src/cli.mjs expand --claim <id>`, from the project
+root (the hook prints the command in that form). The same command reads any
+claim listed by title only. The hook itself needs no installed packages;
 the CLI does, and fails loudly without `tools/context-ledger/node_modules`.
 
 **`build-index --check` compares bytes.** On Windows with `core.autocrlf`, git

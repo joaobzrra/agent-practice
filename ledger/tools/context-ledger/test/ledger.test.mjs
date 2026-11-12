@@ -161,7 +161,12 @@ test("hooks fail open, deduplicate resume/prompt injection, and propagate active
   const prompt = { session_id: "session-1", prompt: "change the wording of the reminder email" };
   const routed = buildHookOutput("UserPromptSubmit", prompt, { root, stateRoot });
   assert(routed?.hookSpecificOutput.additionalContext.includes("CLM-reminders-sent-once"));
-  assert.equal(buildHookOutput("UserPromptSubmit", prompt, { root, stateRoot }), null);
+  // This used to assert null, and the hook only went quiet for a prompt
+  // repeated word for word. Now nothing is ever sent whole twice, and a prompt
+  // that matches a claim already given gets one line pointing back at it.
+  const again = buildHookOutput("UserPromptSubmit", prompt, { root, stateRoot })?.hookSpecificOutput.additionalContext ?? "";
+  assert.equal(again.includes("records that it sent before it queues"), false, "the statement is not sent a second time");
+  assert.match(again, /relevant again: `CLM-reminders-sent-once`/);
   const subagent = buildHookOutput("SubagentStart", { session_id: "session-1", agent_id: "agent-a", agent_type: "Explore" }, { root, stateRoot });
   assert(subagent?.hookSpecificOutput.additionalContext.includes("CLM-reminders-sent-once"));
   // Propagation of the session-start pack, asserted via whichever claim it actually injected.

@@ -72,8 +72,11 @@ function claim(overrides) {
  * `install: true` also copies this package to <root>/tools/context-ledger,
  * which is where the CLI must sit to find the project: it has no --root flag
  * outside `init` and resolves the project three folders above its own file.
+ *
+ * `extraClaims` adds claims to the nine below, for tests that need a ledger
+ * larger than one pack. Each needs an id and a statement; the rest defaults.
  */
-export function makeProject({ install = false } = {}) {
+export function makeProject({ install = false, extraClaims = [] } = {}) {
   const root = tempDir("ledger-fixture-");
 
   write(root, "README.md", "# Fixture Shop\n\nAn invented project for the ledger's tests.\n");
@@ -205,7 +208,7 @@ export function makeProject({ install = false } = {}) {
     { id: "SCN-waitlist-page", name: "Building a waitlist page surfaces the ruling", prompt: "build waitlist page", paths: ["src/waitlist/page.js"], expectedClaims: ["CLM-waitlist-notify-only"] }
   ];
 
-  write(root, "context/claims.json", stableJson(claims));
+  write(root, "context/claims.json", stableJson([...claims, ...extraClaims.map(claim)]));
   write(root, "context/documents.json", stableJson(documents));
   write(root, "context/scenarios.json", stableJson(scenarios));
   write(root, "context/ledger.config.json", stableJson(fixtureConfig));

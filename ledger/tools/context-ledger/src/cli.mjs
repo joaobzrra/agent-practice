@@ -138,7 +138,9 @@ async function main() {
     console.log(`valid: ${ledger.claims.length} claims, ${ledger.documents.length} documents, ${ledger.scenarios.length} scenarios`);
   } else if (command === "route") {
     const pack = routeContext(ledger, { prompt: args.prompt ?? "", paths: String(args.paths ?? "").split(",").filter(Boolean), limit: Number(args.limit ?? routingBudget) });
-    process.stdout.write(args.format === "markdown" ? formatPack(pack) : stableJson(pack));
+    // The hook sends nothing when nothing routed. Here that would look like a
+    // broken command, so say it.
+    process.stdout.write(args.format === "markdown" ? (formatPack(pack) || `# ${loadConfig().displayName} routed context\n\nNo claim routed for this prompt.\n`) : stableJson(pack));
   } else if (command === "expand") {
     const id = args.claim;
     if (id) {

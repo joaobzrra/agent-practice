@@ -2,9 +2,11 @@
 
 A ledger of a project's decisions, hazards and open questions, stored as JSON
 in the project and put in front of the agent by a hook. Each entry is a
-**claim**. On every prompt the hook scores the claims against the prompt and
-injects the ones that match, so a session does not have to know a rule exists
-in order to be told about it.
+**claim**. When a prompt arrives, and when the agent reads or edits a file, the
+hook scores the claims against it and sends the ones that match, so a session
+does not have to know a rule exists in order to be told about it. Each claim
+is sent whole, once per conversation, in a message small enough that the agent
+receives all of it.
 
 This folder is the whole tool: a CLI, a hook, three JSON schemas and the tests.
 In the repository it comes from, `ledger/README.md` shows it running on an
@@ -82,10 +84,28 @@ above `src/`. So the folder has to sit at exactly
              }
            ]
          }
+       ],
+       "PostToolUse": [
+         {
+           "matcher": "Read|Edit|Write|NotebookEdit",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "node",
+               "args": ["${CLAUDE_PROJECT_DIR}/tools/context-ledger/src/hook.mjs", "PostToolUse"],
+               "timeout": 5
+             }
+           ]
+         }
        ]
      }
    }
    ```
+
+   The fourth entry is what makes a claim's `scope.paths` work: it is the only
+   event that knows which file the agent has open. It starts one short Node
+   process per file read or edit (0.1 to 0.2 seconds on the Windows machine
+   this was measured on). Leave it out and claims are found by words only.
 
 5. If the ledger will be committed, pin its line endings. Add to
    `<your project>/.gitattributes`:
@@ -143,10 +163,9 @@ above `src/`. So the folder has to sit at exactly
    node src/cli.mjs route --prompt "rename footer link" --format markdown
    ```
 
-   The first should list `CLM-prices-in-cents`. The second should print the
-   heading and no claim. Run the second one: in a small ledger almost any
-   sentence shares a word with a claim, so the first check alone proves little
-   (see the limits below).
+   The first should print the claim whole. The second should print
+   `No claim routed for this prompt.` Run the second one too: a claim that
+   comes back for every prompt is as badly scoped as one that never does.
 
 9. Only if you want `npm run ci` to pass: list the project's documents in
    `context/documents.json`. `audit-documents` fails for every Markdown file it
@@ -169,9 +188,9 @@ above `src/`. So the folder has to sit at exactly
    ]
    ```
 
-Start a new session in the project. The first message should now arrive with a
-block that begins `# My Project routed context` and lists your claim by id.
-The heading alone means the hook runs but nothing matched.
+Start a new session in the project. It opens with a block that begins
+`# My Project routed context` and ends with a line counting the ledger's
+claims. Ask about the checkout total and your claim arrives with that prompt.
 
 To try the hook by hand, pipe it what the agent sends:
 
@@ -179,8 +198,9 @@ To try the hook by hand, pipe it what the agent sends:
 echo '{"session_id":"try-1","prompt":"change how the checkout total is calculated"}' | node src/hook.mjs UserPromptSubmit
 ```
 
-It prints JSON once. The same `session_id` and prompt a second time prints
-nothing: the hook does not repeat a block it already injected in that session.
+It prints JSON holding the claim. Run it a second time with the same
+`session_id` and the claim is not repeated: the output is one line naming it
+as given earlier. A prompt that matches nothing prints nothing.
 
 ## What `init` creates
 
@@ -205,15 +225,15 @@ All run from `tools/context-ledger`.
 | Command | What it does |
 |---|---|
 | `node src/cli.mjs init [--name <text>] [--repository <slug>] [--root <dir>]` | Creates `context/`. Refuses if it exists. |
-| `node src/cli.mjs validate` | Checks every record against its schema, the state history of each claim, references between claims, and that the always-injected claims fit the budget. |
-| `node src/cli.mjs route --prompt <text> [--paths a,b] [--limit N] [--format markdown]` | Prints the pack for a prompt. JSON unless `--format markdown`. |
+| `node src/cli.mjs validate` | Checks every record against its schema, the state history of each claim, references between claims, and that the always-injected claims fit the budget. Warns about statements too long to arrive whole. |
+| `node src/cli.mjs route --prompt <text> [--paths a,b] [--limit N] [--format markdown]` | Prints the pack for a prompt. JSON unless `--format markdown`. In the JSON, `priority` lists the chosen claims most relevant first. |
 | `node src/cli.mjs expand --claim <id>` or `--topic <topic>` | Prints whole claims. |
 | `node src/cli.mjs build-index [--check]` | Writes `context/generated/`. With `--check` it writes nothing and fails if the files differ. |
 | `node src/cli.mjs check-stale [--base <commit>] [--verify]` | Re-reads every evidence anchor and reports claims whose quoted file content changed. |
 | `node src/cli.mjs audit-documents` | Fails if a Markdown file in the project is not listed in `documents.json`, or a listed one is missing. |
 | `node src/cli.mjs review-packet [--apply <file>]` | Prints the claims waiting for a ruling. `--apply` records decisions from a JSON file. |
 | `node src/cli.mjs dashboard` | Prints a JSON snapshot: every claim, its evidence health, what needs a ruling. |
-| `node src/evaluate.mjs` | Runs every scenario and fails if an expected claim did not come back. |
+| `node src/evaluate.mjs` | Runs every scenario and fails if an expected claim was not chosen. Also lists, without failing, each expected claim that was chosen and would still arrive as a title (`expectedByTitleOnly`). |
 | `node check-vendor.mjs <other copy>` | Reports whether another project's copy of this folder still matches this one. |
 
 `npm test` runs the tool's own tests. `npm run ci` runs those, then the
@@ -222,11 +242,52 @@ project's ledger.
 
 ## What the hook does
 
-| Event | What is injected |
+| Event | What is sent |
 |---|---|
-| `SessionStart` | The claims marked `universal`, the contested ones, any claim that happens to share a word with the fixed start-up prompt (`session start universal invariants critical conflicts`), whether the git worktree is clean, and a claim count. |
-| `UserPromptSubmit` | The pack routed for that prompt, up to 24 claims. |
-| `SubagentStart` | The universal claims plus the pack of the session's latest prompt. |
+| `SessionStart` | The standing claims: those marked `universal`, and the contested ones. Then whether the git worktree is clean, and a claim count. |
+| `UserPromptSubmit` | The claims that match the prompt and that this conversation has not been given yet. Claims it already holds are named in one line. A claim whose wording changed since it was given is sent again and said to have changed. Nothing, when nothing matches. |
+| `PostToolUse` on a file read or edit | The claims whose `scope.paths` cover that file and that this conversation has not been given yet. Nothing otherwise, which is the usual case. |
+| `SubagentStart` | The standing claims plus the claims the session's latest prompt was about, whole as far as they fit: a subagent starts with an empty conversation. They are read from the ledger as it is at that moment. |
+
+**Every message fits in 9,000 characters.** Claude Code caps a hook's message
+at 10,000; a longer one is replaced by a file path and its first 2,000
+characters, and the agent is not told to open the file. So the hook fills the
+message with whole statements, most relevant first, and lists whatever is left
+by title, with the command that prints a claim in full:
+
+```
+## Also matched, by title only
+These did not fit in this message. Before acting in one's area, read it whole: `node tools/context-ledger/src/cli.mjs expand --claim <id>`
+- [CLM-prices-in-cents] Prices are stored as whole cents
+```
+
+A statement is never cut in the middle. One that is too long for the room left
+keeps its title, and a shorter claim further down the list may take the room.
+One prompt or file read brings at most 24 claims the conversation does not
+hold yet; a claim past that is named by title in the same list, and counted in
+a last line (`- and 6 more matched that are not listed`) once titles run out
+of room too. The line that points back at claims already given names eight
+and counts the rest, so it never takes the room of a new claim. As a last
+check, the hook cuts anything still over 9,000 characters at the end of a
+line and says so; that takes ids hundreds of characters long to reach.
+
+**Each claim is sent whole once per conversation.** The hook keeps a record of
+what each conversation has been given: one small file for the main
+conversation of a session and one for each subagent. A claim is recorded with
+a fingerprint of its state and statement, so one that is edited or contested
+in the middle of a session is sent again in its new wording, with a line
+naming it as changed. One that is superseded or removed is named once as no
+longer in force, with its replacement when the ledger records one. The main
+record is emptied when the conversation is
+(`SessionStart` after a compaction, a clear or a fresh start) and kept on a
+resume, which is sent only what changed while the session was away, usually
+nothing. A fork is a new session with an empty record, so it is sent again
+what its parent held. The files are JSON in the system temp folder, under
+`context-ledger/<repository>/`; those older than 30 days are removed. Tool
+calls that run in parallel run one hook each, and each adds to the record
+under a short lock, so twelve files read in one step are twelve claims
+recorded. If a record cannot be written, the message still goes out and the
+claims are sent again next time.
 
 A pack groups claims under four headings, chosen by the claim's `kind`, not by
 how sure anyone is:
@@ -238,54 +299,88 @@ how sure anyone is:
 | Accepted intent | `kind: intent` |
 | Current verified facts | everything else: `fact` and `hazard`, in any routed state, including `accepted` |
 
-The hook remembers what it already injected in a session (a small JSON file in
-the system temp folder, in `context-ledger/<repository>/`) and does not repeat
-an identical block.
-
 **It fails open and silent, on purpose.** Any error, including a missing
 `context/` folder or broken JSON, makes the hook print nothing at all and the
-session continues without a pack. A working hook with no matching claim still
-prints the heading line. Inside a session you are unlikely to notice either,
-so if claims stop appearing, run `node src/cli.mjs validate`.
+session continues without a pack. A working hook also prints nothing for a
+prompt that matches no claim, so inside a session the two look the same. The
+block at the start of the session is the sign of life: if it is missing, run
+`node src/cli.mjs validate`.
 
 ## How a claim is chosen
 
-Retrieval matches words. It does not understand meaning.
+Retrieval matches words and paths. It does not understand meaning.
 
-- Each word of three or more characters that the prompt shares with the claim's
-  topics, entities, title or statement adds 2.
-- Each path given with `--paths` (or in a scenario) that starts with one of the
-  claim's `scope.paths`, or the reverse, adds 12.
-- A `contested` claim gets 3 added.
+- A word of three or more characters that the prompt shares with the claim's
+  title, topics or entities adds 4. Those say what the claim is about.
+- A word the prompt shares only with the claim's statement adds 2.
+- A file the agent read or edited, a path given with `--paths`, or a path
+  written in the prompt adds 12 when it is inside one of the claim's
+  `scope.paths` (or is a folder that contains one). Folders match at a
+  boundary: `src/app` covers `src/app/main.js` and not `src/application`.
+  In a prompt, a bare file name with an extension counts as a path. So does
+  something with a slash in it, when it ends in a file name with an extension
+  or names a file or folder that exists in the project: `client/server` and
+  `and/or` in a sentence are not paths. It may be only the tail of the path.
+  `@src/jobs/x.js`, `src/jobs/x.js:42:7`, `src/jobs/x.js:42-50` and
+  `file:///.../src/jobs/x.js:3:5` are read as `src/jobs/x.js`. An absolute
+  path inside the project is read from the project root, in the Windows, Git
+  Bash (`/c/...`) or WSL (`/mnt/c/...`) spelling. One from another machine,
+  as in a pasted stack trace, matches a scope it contains, and only a scope
+  of two folders or more: `/usr/share/docs/readme.txt` is not your `docs`.
+  A path with a space in it is not recognised. In a prompt with more than
+  400 different path-like words, such as a pasted log, the first 200 and the
+  last 200 are read.
+- A file under `.claude/worktrees/<name>/` counts as the same file in the
+  project, read by a tool or written in a prompt, so a subagent working in a
+  worktree is sent the claims too.
+- A total under 4 counts as no match. One word found only in a statement is
+  usually an accident.
+- Filler words never count: "the", "that", "would", "about", "every" and
+  about a hundred like them. Punctuation at the edge of a word is ignored, so "email." is
+  "email".
+- A `contested` claim gets 3 added, which is enough to route it with no match.
 - A claim scoring 0 is left out, unless it is `universal` or is linked by
   `conflictsWith` to a claim that routes. Both sides of a known contradiction
   always arrive together.
 - `proposed` and `superseded` claims are never routed.
 
-When more claims match than the budget allows, universal claims go first,
-ordered by severity. The rest are ordered by score.
+At most 24 claims are chosen. Universal claims go first, ordered by severity.
+The rest are ordered by score. That order is also the order in which whole
+statements are given the room in a message. In a session, the claims a
+conversation already holds do not count toward the 24, so a ledger with many
+universal claims still has room for what a prompt or a file brings.
 
 ## Limits you should know before relying on it
 
 All of these were checked against the code or by running it.
 
-- **In a live session, paths do not count.** The prompt hook passes the prompt
-  text and no file list (`src/hook.mjs`, the `UserPromptSubmit` branch). The
-  12 points for a path apply to `route --paths` and to scenarios only. A claim
-  that can be found only through `scope.paths` passes its scenario and still
-  never reaches a session. Give every claim words a real prompt would contain,
-  and test it with `route` **without** `--paths`.
-- **A contested claim routes for every prompt.** The 3 points for `contested`
-  put its score above 0 whatever the prompt says. That is intended (an open
-  disagreement should be seen), and while the pack has room it means a
-  contested claim costs what a universal one costs. Once more than 24 claims
-  match, a contested claim with no other match is among the first left out. It
-  also means `route` cannot tell you whether a contested claim's words are any
-  good.
-- **Common words match.** "the" has three letters. In a small ledger most
-  claims share some word with most prompts, so nearly everything is injected.
-  Selection only becomes visible once the ledger is larger than the budget.
-- **`route` does not print scores.** You see which claims came back, not why.
+- **A path reaches a session through the fourth hook, or not at all.** A claim
+  found only through `scope.paths` arrives when the agent reads or edits a
+  file under that path, or when the prompt spells the path out. Without the
+  `PostToolUse` entry in `settings.json`, only the second case exists. And a
+  claim scoped to a file is sent after the file is touched, so it can arrive
+  after a first edit rather than before it. Give a claim that must be seen
+  earlier words a prompt would contain, and test it with `route` without
+  `--paths`.
+- **A long statement arrives as a title.** A message holds 9,000 characters.
+  About twenty claims of 400 characters fit, or two of 3,000. `validate` warns
+  about any statement over 3,000 characters, and `evaluate` lists the expected
+  claims that did not fit. The remedy is a shorter statement, with the detail
+  in the document it cites.
+- **Once given, a claim is not sent again until the conversation is emptied
+  or the claim is changed.** In a very long conversation a rule sent at the start is far behind the
+  current work. Later prompts that match it name it in one line, and that line
+  is the only reminder.
+- **A contested claim opens every session.** The 3 points for `contested` put
+  its score above 0 whatever the prompt says, so it is sent at session start
+  beside the universal claims. That is intended: an open disagreement should
+  be seen. It also means `route` cannot tell you whether a contested claim's
+  words are any good.
+- **Words must match exactly, and the filler list is English.** "reminders"
+  in a prompt does not match the topic "reminder": list both. In another
+  language the common words still count as matches.
+- **`route` does not print scores.** `priority` in its JSON gives the order,
+  not the numbers behind it.
 - **The `symbol` evidence locator reads C# declarations only.** For other
   languages anchor evidence with `excerpt`, `heading`, `jsonPath`, `yamlPath`
   or `file`.
@@ -314,7 +409,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-57 tests. They build an invented project in a temp folder
+104 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

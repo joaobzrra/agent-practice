@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
@@ -241,11 +241,146 @@ export function semanticIssues(ledger) {
   if (mandatory.length > routingBudget) {
     issues.push({ level: "error", code: "universal-overflow", message: `${mandatory.length} always-inject claims exceed the routing budget of ${routingBudget}; demote some universal flags or raise the budget deliberately` });
   }
+  // The same promise, measured in characters. A session start sends the
+  // standing claims (universal ones and open conflicts) and nothing else, so
+  // if they do not fit one message whole, some rule marked "always" arrives
+  // as a title. These are warnings: they describe a ledger that grew, not a
+  // record that is wrong.
+  //
+  // This runs on a ledger that may also have failed its schema, and a claim
+  // with no statement or a number for a path cannot be routed at all. The
+  // schema error already says so; a stack trace here would bury it.
+  try {
+    const standing = renderSessionStart({ claims: active });
+    const cut = standing.titled.length + standing.omitted;
+    if (cut) {
+      issues.push({ level: "warning", code: "standing-overflow", message: `the standing claims do not fit the ${sessionStartBudget} characters a session start has for them; ${cut} would start every session as a title only: ${standing.titled.join(", ")}` });
+    }
+  } catch { /* reported by the schema check */ }
+  const long = active.filter(claim => typeof claim.statement === "string" && claim.statement.length > packCharBudget / 3).map(claim => claim.id);
+  if (long.length) {
+    issues.push({ level: "warning", code: "long-statement", message: `${long.length} statement${long.length === 1 ? " is" : "s are"} longer than ${packCharBudget / 3} characters, a third of what one message holds, and will often arrive as a title only: ${long.join(", ")}` });
+  }
   return issues;
 }
 
+// Words that carry no subject. Every statement contains several, so while
+// they scored, any prompt at all matched most of a ledger: measured on five
+// real ledgers, the median prompt pack was already at the 24-claim cap.
+// English only, and deliberately short: a word that can be a subject ("set",
+// "test", "new") stays out of this list.
+const stopWords = new Set((
+  "the and for with that this from are was were not but you all can has have had its any one out into " +
+  "when then than them they will would should could must may also only each more most how what why who " +
+  "which where does did been being our your their there here about after before because while without " +
+  "within just some such these those very too yet every other another both either neither nor whether " +
+  "over under through between during until since per via off onto upon itself she her him his whose whom " +
+  "same own still even ever again now many much few"
+).split(" "));
+
+// Dots, slashes, dashes and underscores stay inside a token so that a file
+// name or an identifier matches as one word, but not at its edges: "email."
+// at the end of a sentence is the word "email".
 function tokens(value) {
-  return new Set(value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").split(/[^a-z0-9_.\/-]+/).filter(token => token.length > 2));
+  return new Set(
+    value.toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "")
+      .split(/[^a-z0-9_.\/-]+/)
+      .map(token => token.replace(/^[._\/-]+|[._\/-]+$/g, ""))
+      .filter(token => token.length > 2 && !stopWords.has(token))
+  );
+}
+
+// Paths are compared without case and without a trailing slash: Windows
+// hands over "Src\Jobs" for what a claim scoped as "src/jobs/".
+function comparablePath(value) {
+  return normalizePath(value).toLowerCase().replace(/\/+$/, "");
+}
+
+// True when `child` is `parent` or sits inside it. A plain prefix test is
+// not enough: "src/application" starts with "src/app" and is not inside it.
+function under(child, parent) {
+  return child === parent || child.startsWith(`${parent}/`);
+}
+
+// A session in the main checkout can start a subagent in a worktree, which
+// Claude Code creates at <project>/.claude/worktrees/<name>. A file there is
+// the same file as far as a claim's scope is concerned.
+export function withoutWorktree(path) {
+  return path.replace(/^\.claude\/worktrees\/[^/]+\/(?=.)/, "");
+}
+
+// File paths written in a prompt, so that "why does src/jobs/reminders.js
+// send twice" retrieves the claims scoped to that file. Only two shapes
+// count: something with a slash in it, or a bare file name with an
+// extension. A lone word is never a path, even when a folder has that name.
+//
+// The shapes people and tools actually write are all read as the path:
+// "@src/jobs/reminders.js" (a file mention), "src/jobs/reminders.js:42:7" and
+// "file:///X:/app/src/jobs/reminders.js:3:5" (stack frames),
+// "src/jobs/reminders.js:42-50" (a line range), "./src/jobs" and
+// "src/jobs/reminders.js." at the end of a sentence. A path under
+// ".claude/worktrees/<name>/" is read as the project file it is a copy of.
+//
+// Prose is full of slashes that are not paths: "client/server", "and/or",
+// "@types/node", "1/2". So something with a slash counts only when it ends
+// in a file name with an extension, or names a file or folder that exists in
+// the project. An absolute path inside `root` is made relative to it, and
+// "/docs/setup.md" is read from the project root when that file is there.
+// Any other absolute path is returned as it is, absolute, which marks it as
+// coming from somewhere else: see mentionHits.
+const outsidePath = value => value.startsWith("/") || /^[a-z]:\//.test(value);
+
+// A prompt can be a megabyte of pasted log. The question in it is at the top
+// or at the bottom, so past this many distinct path-like chunks only the
+// first and last halves are looked at. That bounds both the file lookups
+// here and the matching against every claim's scope afterwards.
+const mentionLimit = 400;
+
+export function mentionedPaths(prompt, root = repoRoot) {
+  // The same folder as Git Bash and WSL spell it: /c/work/app, /mnt/c/work/app.
+  const bases = [...new Set([root, realPath(root)].map(comparablePath).filter(Boolean).flatMap(base => {
+    const drive = base.match(/^([a-z]):\/(.+)$/);
+    return drive ? [base, `/${drive[1]}/${drive[2]}`, `/mnt/${drive[1]}/${drive[2]}`] : [base];
+  }))];
+  const fileName = /^[\p{L}\p{N}_-]+(\.[\p{L}\p{N}_-]+)*\.[a-z][a-z0-9]{0,7}$/u;
+  const seen = new Set();
+  for (const chunk of String(prompt).match(/[\p{L}\p{N}_.~:@\\\/-]+/gu) ?? []) {
+    let text = chunk.replace(/^@+/, "");
+    // "file:///X:/app/x.js" is how Node prints a module's path in a stack.
+    if (/^file:\/\//i.test(text)) text = text.replace(/^file:\/\/+/i, "/").replace(/^\/(?=[A-Za-z]:[\\/])/, "");
+    else if (text.includes("://")) continue;
+    const value = withoutWorktree(comparablePath(text).replace(/[.:]+$/, "").replace(/(:\d+(-\d+)?){1,2}$/, "").replace(/^:+/, ""));
+    if (value.includes("/") ? value.split("/").filter(Boolean).length > 1 : fileName.test(value)) seen.add(value);
+  }
+  let candidates = [...seen];
+  if (candidates.length > mentionLimit) candidates = [...candidates.slice(0, mentionLimit / 2), ...candidates.slice(-mentionLimit / 2)];
+  const exists = path => { try { return existsSync(join(root, path)); } catch { return false; } };
+  const found = new Set();
+  for (let value of candidates) {
+    if (outsidePath(value)) {
+      const base = bases.find(candidate => value.startsWith(`${candidate}/`));
+      if (base) value = withoutWorktree(value.slice(base.length + 1));
+      else if (value.startsWith("/") && exists(value.replace(/^\/+/, ""))) value = value.replace(/^\/+/, "");
+      if (value) found.add(value);
+    } else if (!value.includes("/") || /\.[a-z][a-z0-9]{0,7}$/.test(value.split("/").at(-1)) || exists(value)) found.add(value);
+  }
+  return [...found];
+}
+
+function realPath(path) {
+  try { return realpathSync.native(path); } catch { return path; }
+}
+
+// A path from a prompt is matched more loosely than one from a tool call.
+// A bare file name matches a scope that ends in it. A project path matches
+// like a tool path, or as the tail of a scope ("jobs/reminders.js"). A path
+// from somewhere else ("/app/src/jobs/reminders.js" in a stack trace) is
+// matched by what it contains, and only against a scope of two segments or
+// more: "/usr/share/docs/readme.txt" is not this project's "docs".
+function mentionHits(mention, claimPath) {
+  if (!mention.includes("/")) return claimPath === mention || claimPath.endsWith(`/${mention}`);
+  if (outsidePath(mention)) return claimPath.includes("/") && (mention.endsWith(`/${claimPath}`) || mention.includes(`/${claimPath}/`));
+  return under(mention, claimPath) || under(claimPath, mention) || claimPath.endsWith(`/${mention}`);
 }
 
 // The smallest claim budget any hook event routes with. Validation checks the
@@ -255,26 +390,55 @@ function tokens(value) {
 //
 // 24 is chosen, not inherited: the largest ledger this ran on had an
 // always-inject closure of 22 when the number was set, and a budget at or
-// below the closure drops a mandatory claim by arithmetic alone. The
-// cost is the ceiling, since every UserPromptSubmit pays it — 24 claims render
-// to roughly 1.9k tokens. The headroom is deliberately two, so the next pair of
-// universal flags is admitted and the pair after that trips validation instead
-// of quietly buying prompt weight. Raising this again is a real decision about
-// per-prompt cost, not a formality: prefer scoping a claim's paths over
-// widening the budget.
+// below the closure drops a mandatory claim by arithmetic alone. The headroom
+// is deliberately two, so the next pair of universal flags is admitted and the
+// pair after that trips validation instead of quietly buying prompt weight.
+// This caps how many claims a pack names. How many of them arrive as whole
+// statements is a separate limit, in characters: see packCharBudget.
 export const routingBudget = 24;
+
+// The most a hook may send. Claude Code caps a hook's context at 10,000
+// characters; past that it saves the text to a file and shows the agent a
+// path and the first 2,000 characters, and nothing tells the agent to open
+// the file. Before this limit existed, nine out of ten packs sent by real
+// projects were replaced that way. The cap has no setting, so the pack has to
+// fit: 9,000 leaves room for the lines a hook adds around it.
+export const packCharBudget = 9000;
+
+// A session start also carries two lines about the repository and the
+// ledger, so the standing claims get this much. `validate` measures them
+// against the same number the hook renders with, through the same function.
+export const sessionTailRoom = 400;
+export const sessionStartBudget = packCharBudget - sessionTailRoom;
 
 export const severityRank = new Map([["critical", 3], ["high", 2], ["medium", 1], ["low", 0]]);
 
-function scoreClaim(claim, promptTokens, pathValues) {
-  let score = 0;
-  const fields = [...claim.scope.topics, ...claim.scope.entities, claim.title, claim.statement];
-  for (const token of tokens(fields.join(" "))) if (promptTokens.has(token)) score += 2;
-  for (const claimPath of claim.scope.paths.map(normalizePath)) {
-    for (const inputPath of pathValues) if (inputPath.startsWith(claimPath) || claimPath.startsWith(inputPath)) score += 12;
+// A word in the title, topics or entities says what the claim is about and
+// scores 4. The same word found only in the statement may be a passing
+// mention and scores 2. A path scores 12, more than any few words.
+//
+// A match below matchFloor counts as no match. One word shared with a
+// statement is usually an accident: statements are prose, and "read", "first"
+// or "file" turn up in most of them. Replaying real sessions, dropping those
+// cut what a prompt was sent by 15 to 25 percent, and every scenario of the
+// five ledgers it was measured on still passed. It takes one word the claim
+// is about, two words from its statement, or a path.
+//
+// `match` is the part of the score that came from the prompt or the paths;
+// a contested claim gets 3 on top so that an open question is never missed.
+const matchFloor = 4;
+
+function scoreClaim(claim, promptTokens, pathValues, mentions) {
+  let match = 0;
+  const about = tokens([...claim.scope.topics, ...claim.scope.entities, claim.title].join(" "));
+  for (const token of about) if (promptTokens.has(token)) match += 4;
+  for (const token of tokens(claim.statement)) if (!about.has(token) && promptTokens.has(token)) match += 2;
+  for (const claimPath of claim.scope.paths.map(comparablePath)) {
+    for (const inputPath of pathValues) if (under(inputPath, claimPath) || under(claimPath, inputPath)) match += 12;
+    if (mentions.some(mention => mentionHits(mention, claimPath))) match += 12;
   }
-  if (claim.state === "contested") score += 3;
-  return score;
+  if (match < matchFloor) match = 0;
+  return { match, score: match + (claim.state === "contested" ? 3 : 0) };
 }
 
 // conflictsWith is undirected for routing: a session must never see only one
@@ -308,16 +472,33 @@ export function conflictComponents(claims) {
   return components;
 }
 
-export function routeContext(ledger, { prompt = "", paths = [], limit = 24 } = {}) {
+/**
+ * Choose the claims for a prompt and a set of paths.
+ *
+ * `limit` caps how many claims the pack holds. `free` lists ids that do not
+ * count against it: a hook passes the claims a conversation already has, so
+ * that the cap applies to what is new and a session full of universal claims
+ * still has room for the ones a file brings. `root` is the project folder,
+ * used to read an absolute path written in the prompt.
+ *
+ * Beside the four lists, the pack says `priority` (admission order),
+ * `standing` (claims that are in every pack whatever was asked), `matched`
+ * (claims the prompt or the paths actually hit) and `cut` (the id and title
+ * of each claim the cap left out, best first, so a caller can name them).
+ */
+export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free = [], root = repoRoot } = {}) {
   const promptTokens = tokens(prompt);
-  const normalizedPaths = paths.map(normalizePath);
+  const normalizedPaths = paths.map(comparablePath).filter(Boolean);
+  const mentions = mentionedPaths(prompt, root);
+  const uncounted = new Set(free);
   const eligible = ledger.claims.filter(claim => activeStates.has(claim.state));
-  const scores = new Map(eligible.map(claim => [claim.id, scoreClaim(claim, promptTokens, normalizedPaths)]));
+  const scores = new Map(eligible.map(claim => [claim.id, scoreClaim(claim, promptTokens, normalizedPaths, mentions)]));
   const components = conflictComponents(eligible).map(members => ({
     members,
     mandatory: members.some(member => member.universal),
     severity: Math.max(...members.map(member => severityRank.get(member.severity) ?? 0)),
-    score: Math.max(...members.map(member => scores.get(member.id)))
+    score: Math.max(...members.map(member => scores.get(member.id).score)),
+    matched: members.some(member => scores.get(member.id).match > 0)
   }));
   // A component routes when a member is universal (always inject) or a member
   // matched the prompt/paths. It is admitted or skipped whole: a partial
@@ -343,20 +524,51 @@ export function routeContext(ledger, { prompt = "", paths = [], limit = 24 } = {
   // a rule marked universal. The whole component is reported, non-universal
   // counterparts included, because none of it routed.
   const droppedMandatory = [];
+  // Standing claims are in the pack whatever was asked: universal ones, and
+  // open conflicts the prompt did not name. A hook sends them once, at the
+  // start of a session, and does not treat them as news on every prompt.
+  const standing = [];
+  const cut = [];
+  let used = 0;
   for (const component of candidates) {
-    if (selected.length + component.members.length > limit) {
+    const cost = component.members.filter(member => !uncounted.has(member.id)).length;
+    if (cost && used + cost > limit) {
       if (component.mandatory) droppedMandatory.push(...component.members.map(member => member.id));
+      else cut.push(...component.members.map(member => ({ id: member.id, title: member.title })));
       continue;
     }
+    used += cost;
     selected.push(...component.members);
+    if (component.mandatory || !component.matched) standing.push(...component.members.map(member => member.id));
   }
+  const matched = eligible.filter(claim => scores.get(claim.id).match > 0).map(claim => claim.id);
+  return assemble(selected, { droppedMandatory: stableSort([...new Set(droppedMandatory)]), standing: stableSort(standing), matched: stableSort(matched), cut });
+}
+
+/**
+ * A pack of exactly these claims, in this order, as the ledger has them now.
+ * An id that is gone, or whose claim is no longer in a routed state, is left
+ * out. A hook uses this to give a subagent the claims of the prompt that
+ * started it without keeping a copy of their text, which would go stale the
+ * moment one of them was superseded.
+ */
+export function packOf(ledger, ids, extra = {}) {
+  const byId = new Map(ledger.claims.map(claim => [claim.id, claim]));
+  const selected = [...new Set(ids)].map(id => byId.get(id)).filter(claim => claim && activeStates.has(claim.state));
+  return assemble(selected, { droppedMandatory: [], standing: [], matched: [], cut: [], ...extra });
+}
+
+function assemble(selected, { droppedMandatory, standing, matched, cut }) {
   const classify = claim => claim.state === "contested" || claim.kind === "conflict" ? "openConflicts"
     : claim.kind === "invariant" ? "bindingInvariants"
       : claim.kind === "intent" ? "acceptedIntent"
         : "currentVerifiedFacts";
-  const output = { bindingInvariants: [], currentVerifiedFacts: [], acceptedIntent: [], openConflicts: [], requiredEvidence: [], verificationCommands: [], expansionHandles: [], droppedMandatory: stableSort([...new Set(droppedMandatory)]) };
+  // `priority` is the order the claims were admitted in, most relevant first.
+  // The four lists below are sorted by id so that a pack is stable to diff;
+  // anything that has to choose between claims reads `priority` instead.
+  const output = { bindingInvariants: [], currentVerifiedFacts: [], acceptedIntent: [], openConflicts: [], requiredEvidence: [], verificationCommands: [], expansionHandles: [], droppedMandatory, priority: selected.map(claim => claim.id), standing, matched, cut };
   for (const claim of selected) {
-    const compact = { id: claim.id, statement: claim.statement, state: claim.state, authority: claim.authority, provenance: claim.evidence.map(item => ({ path: item.path, locator: item.locator, verifiedAtCommit: item.verifiedAtCommit })) };
+    const compact = { id: claim.id, title: claim.title, statement: claim.statement, state: claim.state, authority: claim.authority, provenance: claim.evidence.map(item => ({ path: item.path, locator: item.locator, verifiedAtCommit: item.verifiedAtCommit })) };
     output[classify(claim)].push(compact);
     output.expansionHandles.push(claim.id);
     for (const evidence of claim.evidence) {
@@ -376,26 +588,148 @@ function uniqueObjects(values) {
   return values.filter(value => { const key = JSON.stringify(value); if (seen.has(key)) return false; seen.add(key); return true; });
 }
 
-export function formatPack(pack, { displayName = loadConfig().displayName } = {}) {
-  const sections = [
-    ["Binding invariants", pack.bindingInvariants],
-    ["Current verified facts", pack.currentVerifiedFacts],
-    ["Accepted intent", pack.acceptedIntent],
-    ["Open conflicts", pack.openConflicts]
-  ];
-  const lines = [`# ${displayName} routed context`];
-  for (const [title, claims] of sections) {
-    if (!claims.length) continue;
-    lines.push(`\n## ${title}`);
-    for (const claim of claims) lines.push(`- [${claim.id}] (${claim.state}, ${claim.authority.kind}) ${claim.statement}`);
-  }
-  if (pack.verificationCommands.length) {
-    lines.push("\n## Verification commands", ...pack.verificationCommands.map(command => `- \`${command}\``));
-  }
-  if (pack.expansionHandles.length) lines.push(`\nExpand with: ${pack.expansionHandles.map(id => `\`${id}\``).join(", ")}`);
+const packSections = [
+  ["bindingInvariants", "Binding invariants"],
+  ["currentVerifiedFacts", "Current verified facts"],
+  ["acceptedIntent", "Accepted intent"],
+  ["openConflicts", "Open conflicts"]
+];
+
+// The command an agent runs to read one claim whole. Derived from where this
+// file sits, which is always tools/context-ledger/src inside the project.
+const expandCommand = `node ${normalizePath(relative(repoRoot, join(here, "cli.mjs")))} expand --claim <id>`;
+
+/**
+ * Turn a routed pack into the text a session receives, inside `budget`
+ * characters.
+ *
+ * Whole statements are given in `pack.priority` order for as long as they
+ * fit. A claim that does not fit is listed by title, so the agent knows it
+ * exists and can expand it; titles that do not fit either are counted. A long
+ * claim is skipped rather than cut, because half a rule reads as a whole one.
+ *
+ * `known` holds the ids this conversation was already given whole. They are
+ * not repeated: a matched one is named in a single line, a standing one is
+ * left out, since it was not chosen for this prompt in the first place.
+ *
+ * `changed` holds ids the conversation was given in an earlier wording. They
+ * are sent again like new ones, and named, so the agent knows which of two
+ * texts in its context is the current one.
+ *
+ * Returns the text and what happened to each claim, so the caller can record
+ * which ones the conversation now holds. The text is empty when there is
+ * nothing to say.
+ */
+export function renderPack(pack, { displayName = loadConfig().displayName, budget = packCharBudget, known = [], changed = [], heading = `# ${displayName} routed context`, recall = true } = {}) {
+  const claims = new Map();
+  const sectionOf = new Map();
+  for (const [key] of packSections) for (const claim of pack[key] ?? []) { claims.set(claim.id, claim); sectionOf.set(claim.id, key); }
+  // A pack saved by an older version of this tool has no priority list.
+  const order = [...new Set([...(pack.priority ?? []), ...claims.keys()])].filter(id => claims.has(id));
+  const held = new Set(known);
+  const standing = new Set(pack.standing ?? []);
+  const fresh = order.filter(id => !held.has(id));
+  const again = recall ? order.filter(id => held.has(id) && !standing.has(id)) : [];
+  // The lines around the claims are kept short whatever the ledger holds,
+  // so that they can never take the room of a claim the conversation has not
+  // seen. In a long session on a large ledger, a prompt can match a hundred
+  // claims already given; the most relevant few are named and the rest
+  // counted.
+  // The schema puts no limit on the length of an id, so a list of ids that
+  // is long anyway is replaced by a count.
+  const few = (ids, most) => {
+    const listed = `${ids.slice(0, most).map(id => `\`${id}\``).join(", ")}${ids.length > most ? ` and ${ids.length - most} more` : ""}`;
+    return listed.length <= 2000 ? listed : `${ids.length} claim${ids.length === 1 ? "" : "s"}, with ids too long to list here`;
+  };
+  const head = heading.slice(0, 300);
   const dropped = pack.droppedMandatory ?? [];
-  if (dropped.length) lines.push(`\nBudget overflow: ${dropped.length} always-inject rule${dropped.length === 1 ? "" : "s"} did not fit this pack and ${dropped.length === 1 ? "remains" : "remain"} binding: ${dropped.map(id => `\`${id}\``).join(", ")}. Expand by id before acting in their area.`);
-  return `${lines.join("\n")}\n`;
+  // Claims that matched and that the cap on a pack left out. They are never
+  // given whole here, and they are named by title while there is room:
+  // silence would read as "nothing else applies".
+  const beyond = (pack.cut ?? []).filter(item => !held.has(item.id) && !claims.has(item.id));
+  const past = new Set(beyond.map(item => item.id));
+  const titles = new Map([...beyond.map(item => [item.id, item.title]), ...[...claims].map(([id, claim]) => [id, claim.title])]);
+  const listable = [...fresh, ...past];
+  if (!listable.length && !again.length && !dropped.length) return { text: "", full: [], titled: [], again: [], omitted: 0 };
+
+  const compose = (full, titled, omitted) => {
+    const lines = [head];
+    for (const [key, title] of packSections) {
+      const members = fresh.filter(id => full.has(id) && sectionOf.get(id) === key);
+      if (!members.length) continue;
+      lines.push(`\n## ${title}`);
+      for (const id of members) { const claim = claims.get(id); lines.push(`- [${id}] (${claim.state}, ${claim.authority.kind}) ${claim.statement}`); }
+    }
+    if (titled.length || omitted) {
+      lines.push("\n## Also matched, by title only", `These did not fit in this message. Before acting in one's area, read it whole: \`${expandCommand}\``);
+      for (const id of titled) lines.push(titles.get(id) ? `- [${id}] ${titles.get(id)}` : `- [${id}]`);
+      if (omitted) lines.push(`- and ${omitted} more matched that are not listed`);
+    }
+    const reworded = changed.filter(id => full.has(id));
+    if (reworded.length) lines.push(`\nChanged since it was given earlier in this session, and the wording above is the current one: ${few(reworded, 24)}`);
+    if (again.length) lines.push(`\nGiven earlier in this session and relevant again: ${few(again, 8)}`);
+    if (dropped.length) lines.push(`\nBudget overflow: ${dropped.length} always-inject rule${dropped.length === 1 ? "" : "s"} did not fit this pack and ${dropped.length === 1 ? "remains" : "remain"} binding: ${few(dropped, 24)}. Expand by id before acting in their area.`);
+    return `${lines.join("\n")}\n`;
+  };
+
+  // First every claim is named, by title, as far as titles fit. Then titles
+  // are traded up to whole statements, most relevant first. A statement too
+  // long for the room left keeps its title and a shorter one further down
+  // may still fit.
+  const titled = [];
+  for (const id of fresh) {
+    if (compose(new Set(), [...titled, id], listable.length - titled.length - 1).length > budget) break;
+    titled.push(id);
+  }
+  let omitted = listable.length - titled.length;
+  const full = new Set();
+  for (const id of titled) {
+    const trial = new Set(full).add(id);
+    if (compose(trial, titled.filter(other => !trial.has(other)), omitted).length <= budget) full.add(id);
+  }
+  // Last, and only in the room that is left: the titles of the claims past
+  // the cap. They never cost a chosen claim its statement.
+  const remaining = titled.filter(id => !full.has(id));
+  if (titled.length === fresh.length) {
+    for (const id of past) {
+      if (compose(full, [...remaining, id], omitted - 1).length > budget) break;
+      remaining.push(id);
+      omitted -= 1;
+    }
+  }
+  let text = compose(full, remaining, omitted);
+  // Verification commands are a convenience and go in only when there is room.
+  const commands = full.size && pack.verificationCommands?.length ? `\n## Verification commands\n${pack.verificationCommands.map(command => `- \`${command}\``).join("\n")}\n` : "";
+  if (commands && text.length + commands.length <= budget) text += commands;
+  return { text, full: [...full], titled: remaining, again, omitted };
+}
+
+/**
+ * The last line of defence for "a message always fits", applied by the hook
+ * to everything it sends. renderPack builds a message to size, claim by
+ * claim. What the hook adds around it (the line that withdraws claims, a
+ * heading) is made of ids and names, and the schema puts no limit on their
+ * length. A text that is still too long is cut at the end of a line and says
+ * so, which is still better than what happens past the cap: the agent is
+ * shown the first fifth and a file path.
+ */
+export function fit(text, budget = packCharBudget) {
+  if (text.length <= budget) return text;
+  const note = "\n(Cut here: the rest did not fit in one message.)\n";
+  const room = Math.max(0, budget - note.length);
+  const end = text.lastIndexOf("\n", room);
+  return `${text.slice(0, end > 0 ? end : room)}${note}`;
+}
+
+export function formatPack(pack, options = {}) {
+  return renderPack(pack, options).text;
+}
+
+// What opens a session: the standing claims and nothing else, since there is
+// no prompt yet. Universal ones and open conflicts.
+export function renderSessionStart(ledger, options = {}) {
+  const pack = routeContext(ledger, { limit: routingBudget });
+  return { ...renderPack(pack, { budget: sessionStartBudget, ...options }), pack };
 }
 
 export function currentClaims(ledger) {

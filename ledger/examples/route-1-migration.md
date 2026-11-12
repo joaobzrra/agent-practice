@@ -6,4 +6,6 @@
 ## Current verified facts
 - [CLM-bookings-table-lock] (verified, session) The `bookings` table is read by every page load and by the nightly reporting job. A bare `ALTER TABLE bookings` waits behind any long read, and every new read then queues behind the ALTER, so the site hangs until it finishes. Run schema changes on `bookings` with `SET lock_timeout = '3s'` and retry, never inside the reporting window (02:00 to 03:00).
 
-Expand with: `CLM-bookings-table-lock`, `CLM-customer-copy-spanish`
+## Also matched, by title only
+These did not fit in this message. Before acting in one's area, read it whole: `node tools/context-ledger/src/cli.mjs expand --claim <id>`
+- [CLM-waiting-list-not-decided] Whether a waiting-list customer is auto-booked or only notified is undecided

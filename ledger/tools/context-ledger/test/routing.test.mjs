@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
-import { activeStates, formatPack, loadLedger, routeContext, routingBudget, semanticIssues } from "../src/ledger.mjs";
-import { makeProject } from "../fixtures/project.mjs";
+import { activeStates, formatPack, loadLedger, mentionedPaths, routeContext, routingBudget, semanticIssues } from "../src/ledger.mjs";
+import { makeProject, tempDir } from "../fixtures/project.mjs";
 
 // A stored ledger read from disk, as opposed to the inline fixtures below.
 // It is the fixture project, never the project this package is copied into.
@@ -280,4 +282,205 @@ test("dropping a non-mandatory component reports nothing", () => {
   assert.deepEqual(pack.droppedMandatory, [], "only mandatory drops are a broken promise worth flagging");
   const rendered = formatPack(pack, { displayName: "Test" });
   assert.doesNotMatch(rendered, /Budget overflow/);
+});
+
+test("a word still matches when punctuation follows it", () => {
+  const fixture = {
+    claims: [claim({ id: "CLM-email", scope: { topics: ["reminder"], paths: [], entities: [] } })],
+    documents: [],
+    scenarios: []
+  };
+  for (const prompt of ["fix reminder.", "reminder, please", "(reminder)", "what about reminder?"]) {
+    assert.ok(idsFrom(routeContext(fixture, { prompt })).has("CLM-email"), `"${prompt}" names the topic`);
+  }
+});
+
+test("filler words alone retrieve nothing", () => {
+  // Every claim statement contains words like these. While they scored, any
+  // prompt at all matched most of a ledger and the pack was always full.
+  const fixture = {
+    claims: [claim({ id: "CLM-wordy", title: "The job and the queue", statement: "The job sends this email when that order has been paid for, and not before." })],
+    documents: [],
+    scenarios: []
+  };
+  for (const prompt of ["the", "and what about this one", "that has been done, not before", "can you do it for them"]) {
+    assert.equal(idsFrom(routeContext(fixture, { prompt })).has("CLM-wordy"), false, `"${prompt}" holds no topic word`);
+  }
+  assert.ok(idsFrom(routeContext(fixture, { prompt: "the queue" })).has("CLM-wordy"), "a real word beside the filler still matches");
+});
+
+test("one word found only in a statement is not enough, two are", () => {
+  // Statements are prose. A single shared word such as "read" or "first" is
+  // usually an accident, and each accident used to send a whole claim.
+  const fixture = {
+    claims: [claim({ id: "CLM-prose", title: "Table lock", statement: "Every page load will read the bookings table first." })],
+    documents: [],
+    scenarios: []
+  };
+  const routes = prompt => idsFrom(routeContext(fixture, { prompt })).has("CLM-prose");
+  assert.equal(routes("read that file"), false, "one word from the statement");
+  assert.equal(routes("read the first line"), true, "two words from the statement");
+  assert.equal(routes("explain lock"), true, "one word from the title");
+});
+
+test("a path matches at a folder boundary, not in the middle of a name", () => {
+  const fixture = {
+    claims: [claim({ id: "CLM-app", scope: { topics: ["zzzz"], paths: ["src/app"], entities: [] } })],
+    documents: [],
+    scenarios: []
+  };
+  const route = paths => idsFrom(routeContext(fixture, { prompt: "qqq", paths })).has("CLM-app");
+  assert.equal(route(["src/app/main.js"]), true, "a file inside the folder");
+  assert.equal(route(["src/app"]), true, "the folder itself");
+  assert.equal(route(["src"]), true, "a folder that contains it");
+  assert.equal(route(["src/application/main.js"]), false, "a sibling whose name only starts the same");
+  assert.equal(route(["src/ap"]), false, "half a folder name");
+});
+
+test("a file named in the prompt counts as a path", () => {
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-file", scope: { topics: ["zzzz"], paths: ["src/jobs/reminders.js"], entities: [] } }),
+      claim({ id: "CLM-folder", scope: { topics: ["yyyy"], paths: ["db/migrations"], entities: [] } })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const route = prompt => idsFrom(routeContext(fixture, { prompt }));
+  assert.ok(route("look at src/jobs/reminders.js again").has("CLM-file"), "a relative path");
+  assert.ok(route("open X:\\work\\shop\\src\\jobs\\reminders.js").has("CLM-file"), "an absolute Windows path");
+  assert.ok(route("open /home/me/shop/src/jobs/reminders.js.").has("CLM-file"), "an absolute path with a full stop after it");
+  assert.ok(route("why does reminders.js send twice").has("CLM-file"), "a bare file name");
+  assert.ok(route("change jobs/reminders.js").has("CLM-file"), "the tail of the path");
+  assert.ok(route("add db/migrations/0007_notes.sql").has("CLM-folder"), "a file inside a scoped folder");
+  assert.equal(route("see the other.js file, e.g. this one").size, 0, "an unrelated file name matches nothing");
+  assert.equal(route("rename jobs to tasks").size, 0, "a word that is only a folder name is not a path");
+  // The forms tools and people actually write.
+  assert.ok(route("look at @src/jobs/reminders.js").has("CLM-file"), "a file mention with @");
+  assert.ok(route("@reminders.js sends twice").has("CLM-file"), "a bare file mention with @");
+  assert.ok(route("error at src/jobs/reminders.js:42").has("CLM-file"), "a path with a line number");
+  assert.ok(route("TypeError at reminders.js:42:7").has("CLM-file"), "a bare name with line and column");
+  assert.ok(route("at send (C:\\shop\\src\\jobs\\reminders.js:42:7)").has("CLM-file"), "a Windows stack frame");
+  assert.ok(route("at send (/app/src/jobs/reminders.js:42:7)").has("CLM-file"), "a stack frame from another machine");
+  assert.ok(route("fix ./db/migrations/0007_notes.sql").has("CLM-folder"), "a path that starts with ./");
+  assert.ok(route("see /db/migrations/0007_notes.sql").has("CLM-folder"), "a path written from the project root");
+});
+
+test("a path from somewhere else is not this project's folder of the same name", () => {
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-docs", scope: { topics: ["zzzz"], paths: ["docs"], entities: [] } }),
+      claim({ id: "CLM-empty", scope: { topics: ["yyyy"], paths: [""], entities: [] } }),
+      claim({ id: "CLM-slash", scope: { topics: ["xxxx"], paths: ["/"], entities: [] } })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const here = tempDir("ledger-paths-");
+  mkdirSync(join(here, "docs"));
+  writeFileSync(join(here, "docs", "setup.md"), "# Setup\n", "utf8");
+  const route = (prompt, options = {}) => idsFrom(routeContext(fixture, { prompt, ...options }));
+  assert.ok(route("update docs/setup.md").has("CLM-docs"));
+  assert.ok(route("update /docs/setup.md", { root: here }).has("CLM-docs"), "written from the project root, and the file is there");
+  assert.equal(route("update /docs/setup.md").size, 0, "the same text where no such file exists is someone else's path");
+  assert.ok(route("update ./docs/setup.md").has("CLM-docs"), "written from the current folder");
+  assert.ok(route("update @./docs/setup.md").has("CLM-docs"), "the same as a file mention");
+  assert.equal(route("cat /usr/share/docs/readme.txt").size, 0, "a system folder that happens to be called docs");
+  assert.equal(route("it is in node_modules/foo/docs/x.md").size, 0, "a dependency's docs");
+  assert.equal(route("open /etc/hosts").size, 0, "an empty scope path matches nothing, not everything");
+  assert.equal(routeContext(fixture, { prompt: "qqq", paths: ["src/a.js"] }).expansionHandles.length, 0, "nor does it match every file read");
+  // Inside the project, an absolute path is read from the project root.
+  const root = "X:/work/shop";
+  assert.ok(route("open X:\\work\\shop\\docs\\setup.md", { root }).has("CLM-docs"), "an absolute path inside the project");
+  assert.ok(route("open X:\\work\\shop\\.claude\\worktrees\\a1\\docs\\setup.md", { root }).has("CLM-docs"), "and inside one of its worktrees");
+  assert.equal(route("open X:\\work\\other\\docs\\setup.md", { root }).size, 0, "an absolute path in another project");
+});
+
+test("a path is read in the forms a stack trace, a worktree and other shells give it", () => {
+  const scoped = (id, path) => claim({ id, scope: { topics: ["zzzz"], paths: [path], entities: [] } });
+  const fixture = { claims: [scoped("CLM-jobs", "src/jobs/reminders.js"), scoped("CLM-docs", "docs"), scoped("CLM-guides", "docs/guías")], documents: [], scenarios: [] };
+  const root = "X:/work/shop";
+  const route = prompt => [...idsFrom(routeContext(fixture, { prompt, root }))];
+  assert.deepEqual(route("at remind (file:///X:/work/shop/src/jobs/reminders.js:3:5)"), ["CLM-jobs"], "a Node stack frame in this project");
+  assert.deepEqual(route("at remind (file:///srv/app/src/jobs/reminders.js:3:5)"), ["CLM-jobs"], "and one from another machine");
+  assert.deepEqual(route("see https://example.com/src/jobs/reminders.js"), [], "a web address is still not a file");
+  assert.deepEqual(route("fix .claude/worktrees/feat/src/jobs/reminders.js"), ["CLM-jobs"], "a worktree copy, written from the project root");
+  assert.deepEqual(route("fix .claude\\worktrees\\feat\\src\\jobs\\reminders.js"), ["CLM-jobs"], "the same with backslashes");
+  assert.deepEqual(route("see src/jobs/reminders.js:42-50"), ["CLM-jobs"], "a line range");
+  assert.deepEqual(route("open /x/work/shop/docs/readme.md"), ["CLM-docs"], "the project as Git Bash spells it");
+  assert.deepEqual(route("open /mnt/x/work/shop/docs/readme.md"), ["CLM-docs"], "and as WSL spells it");
+  assert.deepEqual(route("open docs/guías/inicio.md"), ["CLM-docs", "CLM-guides"], "a folder name with accents");
+});
+
+test("a pasted log does not hide the path in the question", () => {
+  const fixture = { claims: [claim({ id: "CLM-jobs", scope: { topics: ["zzzz"], paths: ["src/jobs/reminders.js"], entities: [] } })], documents: [], scenarios: [] };
+  const here = tempDir("ledger-paste-");
+  mkdirSync(join(here, "src", "jobs"), { recursive: true });
+  const route = prompt => [...idsFrom(routeContext(fixture, { prompt, root: here }))];
+  // The same frame 250 times is one thing to look up, not 250.
+  const repeated = Array.from({ length: 250 }, () => "at Module._compile (node:internal/modules/cjs/loader:1105:14)").join("\n");
+  assert.deepEqual(route(`${repeated}\nwhy is src/jobs slow`), ["CLM-jobs"]);
+  // Five thousand different frames: the question is still read, at either end.
+  const frames = Array.from({ length: 5000 }, (_, index) => `at run (/srv/app/lib/module${index}.js:1:1)`).join("\n");
+  assert.deepEqual(route(`${frames}\nwhy is src/jobs slow`), ["CLM-jobs"], "asked under the log");
+  assert.deepEqual(route(`why is src/jobs slow\n${frames}`), ["CLM-jobs"], "asked above the log");
+  assert.ok(mentionedPaths(frames, here).length <= 400, "and the log's own paths are bounded");
+});
+
+test("a slash in ordinary prose is not a path", () => {
+  const scoped = (id, path) => claim({ id, scope: { topics: ["zzzz"], paths: [path], entities: [] } });
+  const fixture = {
+    claims: [scoped("CLM-client", "client"), scoped("CLM-api", "api"), scoped("CLM-dev", "dev"), scoped("CLM-tmp", "tmp"), scoped("CLM-types", "types/node"), scoped("CLM-docs-api", "docs/api"), scoped("CLM-jobs", "src/jobs/reminders.js")],
+    documents: [],
+    scenarios: []
+  };
+  const here = tempDir("ledger-prose-");
+  mkdirSync(join(here, "src", "jobs"), { recursive: true });
+  mkdirSync(join(here, "client"));
+  const route = prompt => [...idsFrom(routeContext(fixture, { prompt, root: here }))];
+  for (const prompt of [
+    "should we keep the client/server split",
+    "use the api/sdk pattern, and/or the other one",
+    "redirect to /dev/null",
+    "it wrote /tmp/out.log",
+    "install @types/node",
+    "see www.example.com/docs/api for the rest",
+    "about 1/2 of them, or 3/4 on a good day"
+  ]) assert.deepEqual(route(prompt), [], prompt);
+  // What still counts: a file name with an extension, or something that is
+  // really there.
+  assert.deepEqual(route("open client/main.js"), ["CLM-client"], "ends in a file name");
+  assert.deepEqual(route("what is in src/jobs"), ["CLM-jobs"], "a folder that exists in the project");
+});
+
+test("a word in the title or topics outranks the same word deep in a statement", () => {
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-a-mentions", title: "Exports are CSV", statement: "Exports are CSV. A refund row inside the window is exported like any other." }),
+      claim({ id: "CLM-b-about", title: "Refund window", scope: { topics: ["refund"], paths: [], entities: [] }, statement: "Fourteen days." })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  assert.equal(routeContext(fixture, { prompt: "refund window" }).expansionHandles.length, 2, "both claims match, or the limit below decides nothing");
+  const pack = routeContext(fixture, { prompt: "refund window", limit: 1 });
+  assert.deepEqual(pack.expansionHandles, ["CLM-b-about"], "the claim about refunds wins the one slot");
+});
+
+test("a pack lists its claims most relevant first, and says which ones always ride along", () => {
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-a-weak", statement: "Deployment and hosting are mentioned in passing." }),
+      claim({ id: "CLM-b-strong", scope: { topics: ["deployment", "hosting"], paths: [], entities: [] } }),
+      claim({ id: "CLM-c-universal", universal: true }),
+      claim({ id: "CLM-d-disputed", state: "contested", scope: { topics: ["quixotic"], paths: [], entities: [] } })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const pack = routeContext(fixture, { prompt: "deployment hosting" });
+  assert.deepEqual(pack.priority, ["CLM-c-universal", "CLM-b-strong", "CLM-a-weak", "CLM-d-disputed"]);
+  assert.deepEqual(pack.standing, ["CLM-c-universal", "CLM-d-disputed"], "universal claims and unmatched open conflicts are standing, not retrieved");
+  const disputedMatched = routeContext(fixture, { prompt: "quixotic" });
+  assert.deepEqual(disputedMatched.standing, ["CLM-c-universal"], "an open conflict the prompt names is retrieved like any other claim");
 });

@@ -6,4 +6,6 @@
 ## Open conflicts
 - [CLM-waiting-list-not-decided] (contested, session) When a table frees up, the waiting list could book the first customer automatically or only notify them. The owner has not chosen. Do not implement either as the default; build the notification path only and ask before adding automatic booking.
 
-Expand with: `CLM-customer-copy-spanish`, `CLM-waiting-list-not-decided`
+## Also matched, by title only
+These did not fit in this message. Before acting in one's area, read it whole: `node tools/context-ledger/src/cli.mjs expand --claim <id>`
+- [CLM-bookings-table-lock] A bare ALTER on the bookings table blocks every page that reads it
