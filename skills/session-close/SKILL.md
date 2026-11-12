@@ -41,26 +41,43 @@ root.
 
 ## Handoff format
 
-Save as `HANDOFF-YYYY-MM-DD.md` in the repository root. Commit it.
+Save as `HANDOFF-YYYY-MM-DD.md` in the repository root, unless the project's
+instructions name another place. Commit it.
+If a handoff for that date already exists, add a new dated section to it; never
+overwrite it. A run that crosses midnight keeps its start date.
+
+This is the one handoff format. The mid-session stub that AGENTS.md asks for
+before long work uses the same fields, so resuming from either is mechanical.
 
 ```markdown
 # Handoff — YYYY-MM-DD
 
-## State
-Where the work stopped. One paragraph. Name the branch and the last commit.
-
-## Landed this session
+## Done
 - <commit sha> — <what it changed, in one line>
+
+## In progress
+- <file path> — <exactly what state it is in>
+
+## Open decisions
+- <the decision> — recommendation: <yours, and why>
+
+## Blocked on
+- <the external dependency, named>
 
 ## Gotchas — do not re-derive these
 - <the trap, what it looks like when you hit it, and the fix>
 
-## Next, in priority order
+## Next action
+<the literal first command to run>, then in priority order:
 1. <the next task, and why it is first>
-2. <...>
 
 ## Waiting on the user
 - <anything only they can do>
+
+## For the integrator
+<!-- Worker branches only (AGENTS.md, Parallel sessions); omit otherwise. -->
+- Ledger: <a ruling the user gave, in their words>
+- Dependency: <a package.json change>
 ```
 
 The gotchas section is the one that pays for the document. Write the symptom as

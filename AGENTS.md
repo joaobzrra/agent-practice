@@ -2,7 +2,7 @@
 
 This file applies to every project and every session. A project-level
 `CLAUDE.md` / `AGENTS.md` adds detail and overrides this file where the two
-conflict.
+conflict, except the Safety section, which nothing overrides.
 
 Delegate token-heavy reading, research, scanning and test runs to cheaper
 subagents; keep judgment, architecture and final review with the lead model.
@@ -70,7 +70,10 @@ putting the text through the shell at all.
    developer's code, or is hard to reverse.** There, state what you will change
    and in what order, and wait for approval; do not edit during a planning
    discussion. For local, reversible work — however many files — state the plan
-   in one or two lines and proceed without waiting.
+   in one or two lines and proceed without waiting. "Production" means a live
+   system or its data; editing a local repo that deploys there is local work
+   until you deploy it. Any change to another developer's app counts as their
+   code.
 4. **One change at a time.** Make one change, verify it, then start the next.
    Do not batch three fixes and guess which one worked.
 5. **Do not break what works.** Read the surrounding system before you touch
@@ -81,8 +84,8 @@ putting the text through the shell at all.
 
 ## How to write
 
-Applies to plans, specs, rules and commit messages. Explanations stay
-conversational and explain the why.
+Applies to plans, specs, rules and commit messages, and to how you scope the
+work itself. Explanations stay conversational and explain the why.
 
 - One instruction per line. One requirement per bullet.
 - Name the file, the function and the change. Never describe a change
@@ -93,8 +96,13 @@ conversational and explain the why.
 - State the constraint the work could violate. Skip this when nothing is at
   risk.
 - State what "done" looks like before starting any task with a deliverable.
-- Never change a file the task did not name. If you find an unrelated problem,
-  report it and leave it alone.
+- Stay inside the task's scope. The files the task needs (its code, its tests,
+  memory, the project ledger, the handoff, the commit-message file) are in
+  scope. Report a problem outside that scope and leave it alone. An earlier
+  wording, "never change a file the task did not name", was read literally by
+  test agents, who then refused to update the tests for their own change.
+- Never weaken or delete an existing test assertion to make it pass without
+  stating why it was wrong.
 
 ## Label what you know
 
@@ -110,6 +118,14 @@ have.
 State a result only after you ran the check. If a step failed, or you skipped
 one, say so plainly. The operator would rather hear a problem than a clean
 summary.
+
+**Run the repository's full CI or test suite locally, never a subset of its
+gates, before calling work green.** A commit hook (`hooks/lib/ci-gate.mjs`)
+enforces this in every repo you opt in. When that gate blocks a commit on a
+failure your change did not cause, prove it (the same test fails without your
+change), then report it to the operator as BLOCKING and do not commit until
+they answer; other in-scope work can continue. Do not fix it outside your
+scope, and do not bypass the gate.
 
 ### Never invent an identifier
 
@@ -141,7 +157,8 @@ that proves it. Two separate subagents once reported the same third-party
 licence wrongly, with full confidence, and only a first-person read caught it.
 
 - Mark each claim **VERIFIED** with a `file:line` quote, or **UNVERIFIED**.
-- A subagent that reports a capability is blocked has to have re-tested it.
+- Do not accept a subagent's "this is blocked" or "this can't be done" unless
+  it re-tested it.
 - Delegation does not propagate: a subagent never spawns another subagent, and
   never performs a merge, push, deploy, credential or destructive operation. If
   a bounded task needs wider authority, it stops and reports back.
@@ -163,7 +180,10 @@ Before you say the word "deployed":
 4. Consider the cache layer explicitly. State whether a full restart is needed
    rather than assuming a reload was enough.
 
-Report all of it: local SHA, remote SHA, and the live check. Never fewer.
+Report all of it: local SHA, remote SHA, and the live check. Never fewer. When
+the target has no git checkout, report the version or file hash it serves
+instead of a SHA. `skills/deploy-verify` carries the full procedure and the
+report format. It verifies a deploy; the project's own runbook performs it.
 
 ## Asking the operator well
 
@@ -223,8 +243,10 @@ These rules hold in every project. Nothing overrides them.
   file. A PreToolUse hook scans every staged diff for key shapes and for the
   operator's username, email and home-directory paths in source files — a
   leaked username once turned a public release build red. If it blocks you, fix
-  the line. Never disable a guard hook to get a commit through; if you believe
-  it is a false positive, say so and get the operator's call.
+  the line.
+- **Never disable or bypass a guard hook** (secret scan, commit message, CI
+  gate), including with `--no-verify`. If you believe it is a false positive,
+  say so and get the operator's call.
 - **Name the target before you destroy it.** Before any delete, overwrite, drop
   table, force push, bulk selection or production write: read the target, state
   exactly what the action will affect, then confirm. Never act on an assumed
@@ -268,10 +290,12 @@ anecdotes, no account of how you got there.
 A second opinion is available from a different model family through a CLI
 plugin. Consult when a second opinion genuinely changes the risk: a new
 architecture or security boundary, something risky about to ship, or a
-product-judgment call. Propose-and-wait only when the thing being validated is
-itself hard to reverse; otherwise just run the consult and report what held.
-See `skills/consult-sol` for how to brief it cold and how to verify its reply
-before acting on it.
+product-judgment call. When the operator asks for a consult, run it. When it is
+your idea, run it and report what held, except when the change under review is
+itself hard to reverse (a migration, a production data change): then propose
+the consult first and wait. Acting on the answer follows the normal rules
+above. See `skills/consult-codex` for how to brief it cold and how to verify
+its reply before acting on it.
 
 ## Session close
 
@@ -287,9 +311,12 @@ Long autonomous runs get cut off mid-task often enough that the handoff cannot
 be the last thing you write. **Write the handoff before the deep work, not
 after it**, and keep it current as you go — a stub at the top of a long run
 that says what you are about to do, and gets updated after each landed piece,
-survives a cut-off. A perfect handoff you never got to write does not.
+survives a cut-off. A perfect handoff you never got to write does not. Keep the
+stub on disk; it is committed with the work, not on its own.
 
-Every handoff carries the same five fields, so resuming is mechanical:
+The stub is the same file and template the `session-close` skill defines, so a
+cut-off run and a clean close leave the same document. Every handoff carries
+the same five fields, so resuming is mechanical:
 
 - **Done** — with commit SHAs.
 - **In progress** — file paths and exactly what state they are in.
@@ -300,3 +327,37 @@ Every handoff carries the same five fields, so resuming is mechanical:
 Mechanical, well-specified work does not need to spend interactive budget. When
 a task is fully specified and needs no judgement — a lint sweep, a triage pass,
 a health check — say so and offer to run it headless instead.
+
+## Parallel sessions
+
+Several agent sessions may work on one repository at once. Without rules they
+overwrite each other's edits and nobody can say which session broke the build.
+
+- **The integrator** is the session in the repository's main checkout (not a
+  worktree), unless the operator names another. Only it edits the main
+  checkout, merges branches and writes the shared decision ledger.
+- **Workers** are every other session: one task each, in its own git worktree
+  (a second working copy of the same repository, on its own branch). Two
+  sessions never edit the same checkout.
+- Each session states its task in one line when it starts, so the operator can
+  tell the sessions apart.
+- **A worker's notes for the integrator** go, at the moment they arise, under
+  `## For the integrator` in that branch's handoff file. Create the file if the
+  branch has none, even for a short session; this overrides the `session-close`
+  skill's "skip it for a single contained fix". Two kinds of line:
+  `Ledger: <the ruling, in the operator's words>` and
+  `Dependency: <the package manifest change>`. Tell the operator in one line
+  that the integrator will pick it up at merge. A worker never writes the
+  ledger itself.
+- **If you find another live session editing your checkout**, the setup itself
+  is wrong. Keep the edit already made. Stop editing or committing that file.
+  Run `git worktree list` to see which checkout each branch is in. Tell the
+  operator (BLOCKING) which session it was and what that showed, and wait for
+  their answer before touching that file again. Work on other files continues.
+- **Installs:** a worktree has its own `node_modules`, so each session installs
+  in its own checkout. Inside one checkout, a session and its own subagents run
+  `npm install` one at a time; parallel installs there drop packages.
+- A worker may commit and push its own branch when the operator says to commit.
+  Only the integrator merges into main: "merge X when it's green" approves a
+  local merge once the full suite passes; pushing main needs its own say-so in
+  that message.

@@ -10,7 +10,7 @@ the rules, the roles, and the hooks that enforce them.**
 <p>
 <img alt="Node 18+" src="https://img.shields.io/badge/Node-18%2B-5FA04E?style=flat-square&logo=node.js&logoColor=white">
 <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-2DC6BB?style=flat-square">
-<img alt="49 tests passing" src="https://img.shields.io/badge/tests-49%20passing-2DC6BB?style=flat-square">
+<img alt="73 hook tests passing" src="https://img.shields.io/badge/hook%20tests-73%20passing-2DC6BB?style=flat-square">
 <img alt="Licence MIT" src="https://img.shields.io/badge/licence-MIT-F5A623?style=flat-square">
 </p>
 
@@ -23,6 +23,24 @@ extracted from production use across a commercial web store, a .NET back-office
 platform, a desktop map editor, a live game server and a shipped UE5 game.
 
 Every rule in here exists because its absence cost something.
+
+## New here? Read in this order
+
+You do not need all of it. Start small and add a piece when its absence hurts.
+
+1. **"The rules that matter most"**, below. Five minutes. If you take only one
+   thing, take the three labels: Verified, Inferred, Assumed.
+2. **[`lessons/`](lessons/README.md)**. Thirteen short stories of things that
+   went wrong and the rule each one produced. Pick the three that sound like
+   your last bad week.
+3. **[`AGENTS.md`](AGENTS.md)**. Copy it into your own setup. Rewrite
+   "Calibrating explanations" and "Environment" to describe you and your
+   machine; an agent that knows who it is talking to explains better.
+4. **[`hooks/`](hooks/README.md)**. Install the commit guards. This is the step
+   that turns advice into something the agent cannot skip.
+5. **`skills/`**, one at a time, when you need it. `session-close` first. A
+   `foundation-*` skill the next time you start a project. `ui-refine` the
+   first time an agent builds you a screen.
 
 ## The problem it solves
 
@@ -46,8 +64,9 @@ So the system is built on one idea:
 |---|---|
 | **`AGENTS.md`** | The working agreement. Every rule, and why it exists. |
 | **`agents/`** | Four roles — `scout`, `researcher`, `implementer`, `reviewer` — each pinned to a model tier by the judgment its job requires. |
-| **`skills/`** | Ten invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist. |
+| **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
+| **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
 
 ## The rules that matter most
 
@@ -73,6 +92,18 @@ confidence. Only a first-person read caught it.
 Pushing is not deploying and a green build is not a runtime result. Compare the
 remote SHA to the local one, list the files on the target, hit the live
 endpoint, and state whether the cache needs clearing. Report all of it.
+<code>skills/deploy-verify</code> is the procedure.
+</td></tr>
+<tr><td><b>Run the full suite, not one gate</b></td><td>
+Work is green when the repository's whole CI command passes locally, not when
+the one test you touched does. A commit hook runs it for you and blocks the
+commit on failure.
+</td></tr>
+<tr><td><b>Looking is not delegated</b></td><td>
+Anything judged by eye stays with the main model, which builds it, screenshots
+it and compares it with a target set before the first line of code. One session
+sent 28 UI slices to cheaper agents and took one screenshot; the result was
+"pretty, but not what I expect". <code>skills/ui-refine</code> is the loop.
 </td></tr>
 <tr><td><b>Say what a false fix looks like</b></td><td>
 So a coincidence is not mistaken for a result.
@@ -84,12 +115,13 @@ So a coincidence is not mistaken for a result.
 `AGENTS.md` describes the discipline. `hooks/` makes it non-optional, because
 quality that depends on remembering is not quality.
 
-| Hook | What it blocks |
+| Hook | What it does |
 |---|---|
-| `lib/leak-scan.mjs` | A staged diff containing a credential shape, or your username / email / home path in a source file. |
-| `lib/message-shape.mjs` | An inline commit message the shell would mangle. PowerShell rewrites quotes, eats backticks and expands `$` — the fix is never better escaping, it is writing the message to a file. |
-| `lib/deploy-freshness.mjs` | A deploy claim that has not been read back from the target. |
-| `identifier-guard.mjs` | An invented game asset name, model hash or world coordinate. |
+| `lib/leak-scan.mjs` | Blocks a staged diff containing a credential shape, or your username / email / home path in a source file. |
+| `lib/message-shape.mjs` | Blocks an inline commit message the shell would mangle. PowerShell rewrites quotes, eats backticks and expands `$` — the fix is never better escaping, it is writing the message to a file. |
+| `lib/ci-gate.mjs` | Blocks a commit in an opted-in repo whose full CI command fails. |
+| `lib/deploy-freshness.mjs` | Warns, before a command that changes a remote target, about uncommitted files and unpushed commits: the state the target cannot have. |
+| `identifier-guard.mjs` | Warns, after a file edit, about a freshly written game asset name, model hash or world coordinate, and asks where it came from. |
 
 ```console
 $ node hooks/test/commit-guards.test.mjs
@@ -97,9 +129,14 @@ $ node hooks/test/commit-guards.test.mjs
 
 $ node hooks/test/new-guards.test.mjs
 21 passed, 0 failed
+
+$ node hooks/test/ci-gate.test.mjs
+24 passed, 0 failed
 ```
 
-A guard nobody tests is a guard nobody can trust.
+A guard nobody tests is a guard nobody can trust. One thing the CI gate taught:
+a hook that times out does not block, it lets the action through. The hook's
+timeout has to stay above the longest thing it runs.
 
 ## Agent roles, tiered by judgment
 
@@ -111,6 +148,19 @@ on the strongest model available.
 Delegation also does not propagate: a subagent never spawns another subagent,
 and never performs a merge, push, deploy, credential or destructive operation.
 If a bounded task needs wider authority, it stops and reports back.
+
+The first question is whether to delegate at all. With a large context and a
+strong model driving, the handoff is often the most expensive part.
+`skills/efficient-orchestration` gives three cases where it pays: breadth,
+noise, and slices that own separate files.
+
+## Several sessions at once
+
+Two agent sessions editing one checkout overwrite each other. The rule in
+`AGENTS.md` is one integrator in the main checkout and every other session in
+its own git worktree (a second working copy of the repository on its own
+branch). Only the integrator merges. A worker leaves its notes for the
+integrator in its branch's handoff file.
 
 ## Foundation protocols
 
@@ -138,6 +188,14 @@ Its scoring rules are tuned, not guessed — token-overlap weights, a 2-characte
 token floor, a measured per-prompt budget — because a ledger that injects
 everything is just a slower prompt.
 
+## Security audit
+
+`skills/security-audit` is not mine. It is an unmodified copy of
+[Cloudflare's security-audit skill](https://github.com/cloudflare/security-audit-skill),
+MIT licensed, included because it is the security review this setup uses. Its
+licence and the exact commit it was copied from are in that folder. Install the
+current version from Cloudflare's repository rather than from here.
+
 ## Setup
 
 The hooks need a local identity file to know what counts as *your* personal
@@ -151,9 +209,43 @@ Fill in your own email, OS username and GitHub handle. Without it the generic
 credential scanning still runs — the hook warns once and keeps working rather
 than failing open silently.
 
-Register the hooks as `PreToolUse` entries pointing at `hooks/commit-guards.mjs`
-and `hooks/identifier-guard.mjs`, then drop `skills/` and `agents/` into your
-`.claude/` directory.
+To opt a repository into the full-CI gate, copy
+`hooks/ci-commands.example.json` to `hooks/ci-commands.json` (also gitignored)
+and list the repository's root with its full CI command. A repository that is
+not listed is never slowed down.
+
+Register the hooks in your Claude Code `settings.json`. The commit guards run
+before a shell command (`PreToolUse`); the identifier guard runs after a file
+edit (`PostToolUse`):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["/absolute/path/to/hooks/commit-guards.mjs"], "timeout": 600 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["/absolute/path/to/hooks/identifier-guard.mjs"], "timeout": 15 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Keep the `600`. The CI gate gives your test suite up to 540 seconds, and a hook
+that runs out of time does not block the commit. A shorter hook timeout would
+switch the gate off on a slow suite without telling you.
+
+Then drop `skills/` and `agents/` into your `.claude/` directory.
 
 ## A note on this repo
 

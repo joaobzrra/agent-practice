@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Bounded code implementation behind a contract that has already been decided. Use for features, endpoints, UI components, well-localized bug fixes, medium refactors, and tests that follow an existing pattern — once the design call is made and the files it may touch are named. Not for architecture decisions, and not for work whose scope is still open.
+description: Bounded code implementation behind a contract that has already been decided. Use for features, endpoints, data layers, non-visual wiring, well-localized bug fixes, medium refactors, and tests that follow an existing pattern — once the design call is made and the files it may touch are named. Not for architecture decisions, not for work whose scope is still open, and not for visual UI (layout, CSS, styling) — that stays with the main model.
 model: sonnet
 ---
 

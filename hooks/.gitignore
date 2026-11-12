@@ -1,3 +1,6 @@
 # Real personal-identifier config for lib/leak-scan.mjs. Never commit this —
 # copy identity.example.json to identity.json and fill in your own values.
 identity.json
+# Real per-repo CI map for lib/ci-gate.mjs — copy ci-commands.example.json to
+# ci-commands.json and list your own repos. Local to your machine.
+ci-commands.json

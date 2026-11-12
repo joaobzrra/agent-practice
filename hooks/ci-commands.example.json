@@ -1,0 +1,5 @@
+{
+  "_readme": "Copy this file to ci-commands.json and replace the examples. Full CI per repo, run by lib/ci-gate.mjs from the repo root before every non-docs commit. Runs through the platform shell (cmd.exe on Windows, so use backslashes for relative paths there). No dependency installs, no release packaging, nothing that needs a server the hook cannot start. Keys are repo roots (case and slash direction ignored). Keys starting with _ are ignored.",
+  "/absolute/path/to/web-app": "npm run lint && npm run typecheck && npm test",
+  "/absolute/path/to/dotnet-service": "dotnet build src/Service.sln && dotnet test tests/Service.Tests/Service.Tests.csproj"
+}

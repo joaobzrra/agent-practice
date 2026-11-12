@@ -2,7 +2,7 @@
 /**
  * PreToolUse entry point for the commit guards.
  *
- * One process runs both checks, because this hook fires on EVERY Bash and
+ * One process runs all the checks, because this hook fires on EVERY Bash and
  * PowerShell call and Node's startup — not the checks themselves — is the cost.
  * Two separate hook entries doubled that tax for no benefit.
  *
@@ -102,6 +102,18 @@ process.stdin.on('end', async () => {
     if (r) reasons.push(r);
   } catch (e) {
     process.stderr.write(`commit-guards: leak-scan check failed to load: ${e.message}\n`);
+  }
+
+  // Full CI last, and only when the cheap checks passed: no reason to spend
+  // minutes of CI on a commit that is already blocked.
+  if (reasons.length === 0) {
+    try {
+      const ci = await import('./lib/ci-gate.mjs');
+      const r = ci.check(command, repo);
+      if (r) reasons.push(r);
+    } catch (e) {
+      process.stderr.write(`commit-guards: ci-gate check failed to load: ${e.message}\n`);
+    }
   }
 
   if (reasons.length === 0) process.exit(0);

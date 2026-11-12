@@ -11,9 +11,12 @@ Installed 2026-08-23 from the `/insights` report covering 2026-07-04 → 2026-08
 | `lib/message-shape.mjs` | Blocks `git commit -m` when the **message** will be mangled by PowerShell. Points at `git commit -F .git/COMMITMSG`. |
 | `lib/leak-scan.mjs` | Blocks a commit whose staged diff contains a credential shape, or a personal identifier configured in `identity.json` (username / email / home-directory path) in a **source** file (docs and configs are exempt). |
 | `lib/deploy-freshness.mjs` | **Advisory.** Before a command that mutates a remote target, reports uncommitted tracked files and unpushed commits — the state the target cannot have. |
+| `lib/ci-gate.mjs` | **Blocks** a commit when the repo's full CI command fails. Opt-in per repo; runs last, after the cheap checks pass. |
+| `ci-commands.json` | Your local, git-ignored map of `"<repo root>": "<full CI command>"`. Copy `ci-commands.example.json` to create it. Absent means no repo has opted in. |
 | `identifier-guard.mjs` | **Advisory.** PostToolUse on `Edit`/`Write`/`MultiEdit`. Flags freshly written GTA/FiveM asset names, coordinate literals and rotation calls in `.lua`, and asks where each came from. |
 | `test/commit-guards.test.mjs` | 28 cases covering both commit guards, the allow paths, the exemptions and the repo resolution. |
 | `test/new-guards.test.mjs` | 21 cases covering deploy freshness and the identifier guard, including the silence cases. |
+| `test/ci-gate.test.mjs` | 24 cases covering the CI gate: opt-in sources, docs-only skip, `-am`, ordering after the cheap checks, a broken map. |
 
 Registered in `../settings.json` under `hooks.PreToolUse` and `hooks.PostToolUse`.
 
@@ -98,14 +101,42 @@ the credential-shape checks (private keys, API tokens, assigned passwords)
 still run; only the personal-identifier scan is disabled, and the hook prints
 a one-line warning saying so.
 
+## The full-CI gate
+
+`lib/ci-gate.mjs` blocks a commit when the repository's full CI command fails.
+It exists because the rule "run the full suite, not single gates" lived only in
+prose, and a stale test got through. Now it is a check.
+
+- **Opt-in per repo.** Copy `ci-commands.example.json` to `ci-commands.json`
+  (git-ignored) and add `"<repo root>": "<full CI command>"`. A repo that is
+  not listed is never slowed down. With no `ci-commands.json` at all, no repo
+  has opted in.
+- **Per-repo override.** `<repo>/.claude/ci-command` wins over the central map.
+  The first non-blank line that does not start with `#` is the command.
+- **Docs-only commits are skipped.** If every file in the commit is `.md` or
+  `.txt`, CI is not run.
+- **Runs last.** Only when the message-shape and leak-scan checks passed, so no
+  CI time is spent on a commit that is already blocked.
+- **Working tree, not the staged snapshot.** With a partly staged commit, CI
+  also sees the unstaged edits.
+- **A broken `ci-commands.json` blocks.** Silently allowing every commit would
+  switch the gate off without anyone noticing.
+
+**Timeout lesson.** A hook that times out does not block; it lets the commit
+through. The gate's own CI timeout is 540 s (`CI_TIMEOUT_MS`), so the
+`PreToolUse` hook timeout you set when registering the hook must stay above
+it. Use `"timeout": 600`; the repository README shows the full registration.
+Raise the CI timeout and the hook timeout together, hook always larger.
+
 ## Running the tests
 
 ```
 node test/commit-guards.test.mjs
 node test/new-guards.test.mjs
+node test/ci-gate.test.mjs
 ```
 
-Run them from this directory or from anywhere else — both resolve the hooks
+Run them from this directory or from anywhere else — all resolve the hooks
 and fixtures relative to their own file location, not a fixed path. Expected:
 all cases passing. They build and delete a throwaway git repo in the temp
 directory; they never touch a real project.
