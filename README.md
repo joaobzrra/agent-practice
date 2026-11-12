@@ -10,7 +10,7 @@ the rules, the roles, and the hooks that enforce them.**
 <p>
 <img alt="Node 18+" src="https://img.shields.io/badge/Node-18%2B-5FA04E?style=flat-square&logo=node.js&logoColor=white">
 <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-2DC6BB?style=flat-square">
-<img alt="121 hook tests passing" src="https://img.shields.io/badge/hook%20tests-121%20passing-2DC6BB?style=flat-square">
+<a href="https://github.com/joaobzrra/agent-practice/actions/workflows/hook-tests.yml"><img alt="Hook tests" src="https://github.com/joaobzrra/agent-practice/actions/workflows/hook-tests.yml/badge.svg"></a>
 <img alt="Licence MIT" src="https://img.shields.io/badge/licence-MIT-F5A623?style=flat-square">
 </p>
 
