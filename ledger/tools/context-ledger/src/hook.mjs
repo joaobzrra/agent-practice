@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { activeStates, fit, gitHead, loadLedger, packCharBudget, packOf, renderPack, renderSessionStart, repoRoot as defaultRoot, routeContext, routingBudget, sessionStartBudget, sessionTailRoom, stableJson, withoutWorktree } from "./ledger.mjs";
@@ -91,10 +91,14 @@ function pruneState(folder) {
   } catch { /* best effort */ }
 }
 
-function repositoryState(root) {
+// `own` says the folder is the ledger's own project. Only then is git told
+// to trust it whoever owns it. A shared ledger runs in whatever folder a
+// session is started in, and git's ownership check is what stops a
+// repository placed there by someone else from running its own commands.
+function repositoryState(root, own = true) {
   try {
-    const status = execFileSync("git", ["-c", `safe.directory=${root.replaceAll("\\", "/")}`, "-C", root, "status", "--short"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 1500 }).trim();
-    return `Repository: ${gitHead(root).slice(0, 12)}; worktree ${status ? "has local changes" : "clean"}.`;
+    const status = execFileSync("git", [...(own ? ["-c", `safe.directory=${root.replaceAll("\\", "/")}`] : []), "-C", root, "status", "--short"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 1500 }).trim();
+    return `Repository: ${gitHead(root, own).slice(0, 12)}; worktree ${status ? "has local changes" : "clean"}.`;
   } catch { return "Repository state unavailable."; }
 }
 
@@ -117,10 +121,15 @@ function real(path) {
   }
 }
 
+// Is a relative path, as `relative()` returns it, a way out of the folder it
+// was measured from? A name that only begins with two dots ("..cache") is
+// not.
+const leaves = between => between === ".." || between.startsWith(`..${sep}`) || isAbsolute(between);
+
 function projectPath(root, file) {
   if (typeof file !== "string" || !file) return null;
   const inside = relative(real(root), real(resolve(root, file)));
-  if (!inside || inside.startsWith("..") || isAbsolute(inside)) return null;
+  if (!inside || leaves(inside)) return null;
   return withoutWorktree(inside.replaceAll("\\", "/"));
 }
 
@@ -131,7 +140,7 @@ function projectPath(root, file) {
 function guestOf(root, project) {
   if (typeof project !== "string" || !project) return null;
   const between = relative(real(root), real(resolve(project)));
-  return between.startsWith("..") || isAbsolute(between) ? resolve(project) : null;
+  return leaves(between) ? resolve(project) : null;
 }
 
 // Does a shared ledger have anything to say in this project? `patterns` are
@@ -140,18 +149,45 @@ function guestOf(root, project) {
 // under it counts: a session is often started in a project's subfolder, or
 // in the folder that holds several projects. No patterns means the ledger
 // serves every project its hook is registered for.
-export function serves(project, patterns) {
-  if (!patterns.length) return true;
+//
+// `served` returns the folder the ledger takes as the project, or null when
+// it has nothing to say: the folder that holds the matching file when that is
+// the session's folder or one above it, and the session's own folder when
+// the match is in a folder under it (several projects may be, so none is
+// chosen; `projectOf` chooses per file).
+const listing = folder => { try { return readdirSync(folder, { withFileTypes: true }); } catch { return []; } };
+function marker(patterns) {
   const tests = patterns.map(pattern => new RegExp(`^${pattern.split("*").map(part => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "i"));
-  const names = folder => { try { return readdirSync(folder, { withFileTypes: true }); } catch { return []; } };
-  const holds = entries => entries.some(entry => !entry.isDirectory() && tests.some(test => test.test(entry.name)));
-  const here = names(project);
-  if (holds(here)) return true;
+  return entries => entries.some(entry => !entry.isDirectory() && tests.some(test => test.test(entry.name)));
+}
+
+export function served(project, patterns) {
+  if (!patterns.length) return project;
+  const holds = marker(patterns);
+  const here = listing(project);
+  if (holds(here)) return project;
   for (let current = dirname(project); ; current = dirname(current)) {
-    if (holds(names(current))) return true;
+    if (holds(listing(current))) return current;
     if (dirname(current) === current) break;
   }
-  return here.filter(entry => entry.isDirectory()).slice(0, 200).some(entry => holds(names(join(project, entry.name))));
+  return here.filter(entry => entry.isDirectory()).slice(0, 200).some(entry => holds(listing(join(project, entry.name)))) ? project : null;
+}
+
+export const serves = (project, patterns) => served(project, patterns) !== null;
+
+// The project a file belongs to, for a session started in a folder that
+// holds several: the nearest folder above the file, below the session's,
+// that holds a matching file. Without one, the session's folder.
+function projectOf(file, ground, patterns) {
+  if (typeof file !== "string" || !file || !patterns.length) return ground;
+  const holds = marker(patterns);
+  const top = real(ground);
+  for (let current = dirname(real(resolve(ground, file))); ; current = dirname(current)) {
+    const between = relative(top, current);
+    if (!between || leaves(between)) return ground;
+    if (holds(listing(current))) return current;
+    if (dirname(current) === current) return ground;
+  }
 }
 
 const union = (...lists) => [...new Set(lists.flat())];
@@ -217,8 +253,8 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
     const guest = guestOf(root, project);
     // Checked before the ledger is read: a hook registered for every project
     // runs on every prompt in all of them, and most are not its concern.
-    if (guest && !serves(guest, config.appliesTo)) return null;
-    const ground = guest ?? root;
+    const ground = guest ? served(guest, config.appliesTo) : root;
+    if (!ground) return null;
     const expand = guest ? `node "${join(root, "tools", "context-ledger", "src", "cli.mjs").replaceAll("\\", "/")}" expand --claim <id>` : undefined;
     const ledger = loadLedger(root);
     const resolvedStateRoot = stateRoot ?? join(tmpdir(), "context-ledger", config.repository);
@@ -245,7 +281,7 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
       const rendered = renderSessionStart(ledger, { displayName, known: talk.held, changed: talk.changed, recall: false, budget: sessionStartBudget - notice.length, expand });
       if (resumed && !rendered.text && !notice) return null;
       const active = ledger.claims.filter(claim => activeStates.has(claim.state)).length;
-      const tail = `${repositoryState(ground)}\nLedger: ${active} active claims, ${ledger.documents.length} registered documents. A claim about a request, or scoped to a file you open or edit, is sent when that happens.`.slice(0, sessionTailRoom - 1);
+      const tail = `${repositoryState(ground, !guest)}\nLedger: ${active} active claims, ${ledger.documents.length} registered documents. A claim about a request, or scoped to a file you open or edit, is sent when that happens.`.slice(0, sessionTailRoom - 1);
       context = `${rendered.text || `# ${displayName} routed context\n`}${notice}\n${tail}`;
       save = [mainPath, latest => (resumed
         ? { ...latest, known: after(latest.known, talk.withdrawn, rendered.pack, rendered.full) }
@@ -278,7 +314,8 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
     } else if (event === "PostToolUse") {
       // The only event that knows which file is in play, so the only one
       // where a claim's scope.paths can count in a live session.
-      const file = projectPath(ground, input.tool_input?.file_path ?? input.tool_input?.notebook_path);
+      const opened = input.tool_input?.file_path ?? input.tool_input?.notebook_path;
+      const file = projectPath(guest ? projectOf(opened, ground, config.appliesTo) : ground, opened);
       if (!file) return null;
       const statePath = agentPath ?? mainPath;
       const talk = conversation(ledger, readState(statePath).known);

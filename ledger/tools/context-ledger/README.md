@@ -318,16 +318,20 @@ block at the start of the session is the sign of life: if it is missing, run
 
 ## One ledger for several projects
 
-Some lessons belong to a stack, not to a project: what a game engine does on
-a dedicated server, what a framework's build does to a new route. Recorded in
+Some lessons belong to a stack, not to a project: what a game engine does to
+a packaged build, what a framework's build does to a new route. Recorded in
 one project's ledger, they are learned again in the next one.
 
 A ledger can serve sessions in other projects. Nothing is installed in those
 projects.
 
 1. Give the shared ledger a folder of its own, outside any project, and
-   install the tool there as in "Install in your project" (steps 1 to 3 and
-   6 to 8). The folder then holds `context/` and `tools/context-ledger/`.
+   install the tool there as in "Install in your project": steps 1 to 3 and
+   6 to 8, step 5 if the folder is a git repository, and step 9 if you want
+   `npm run ci` to pass there. Step 4 is replaced by step 3 below. The folder
+   then holds `context/` and `tools/context-ledger/`. This is a whole ledger
+   with its own copy of the tool, not a copy of the tool shared by projects
+   (see "One copy per project" under the limits).
 2. Say which projects it applies to, in `context/ledger.config.json`:
 
    ```json
@@ -339,9 +343,14 @@ projects.
    ```
 
    `appliesTo` is a list of file names, with `*` for any run of characters.
-   The ledger speaks in a session when a matching file is in the session's
+   A name, not a path: a pattern with a slash in it matches nothing. The
+   ledger speaks in a session when a matching file is in the session's
    folder, in a folder above it, or in a folder directly under it. Leave
    `appliesTo` out and the ledger speaks in every project its hook runs for.
+
+   Every folder above the session counts, up to the drive root, so choose a
+   name only that kind of project has. `*.json` would match a file in your
+   home folder and turn the ledger on for everything under it.
 3. Register its hook in your user settings (`~/.claude/settings.json`), with
    the same four entries as in step 4 of the install, and the absolute path
    of the shared ledger's `hook.mjs` in place of
@@ -351,21 +360,40 @@ What changes for a session in another project:
 
 - A claim's `scope.paths` is matched against the session's project. A claim
   scoped to `Config/DefaultEngine.ini` is sent when the agent opens that file
-  in whichever project it is working in.
+  in whichever project it is working in. The path is counted from the folder
+  that holds the file named in `appliesTo`, so it does not matter whether the
+  session was started there, in a subfolder, or in a folder that holds
+  several projects. Without `appliesTo` it is counted from the session's
+  folder.
+- In a project that is a git repository owned by another account, the line
+  about the repository's state reads "Repository state unavailable". The tool
+  tells git to trust only the ledger's own folder.
 - The command a message gives for reading a claim names the shared ledger's
   own `cli.mjs` by its full path.
 - A project can have its own ledger as well. The two hooks send two separate
   messages, each built to fit.
+- `validate` measures the standing claims with the short form of the command
+  that reads a claim. A shared ledger's messages spend a little more on the
+  full path, so leave some room under the `standing-overflow` warning.
 
 A ledger about one subject has words that every claim shares: the engine's
 name, "game", "editor". A prompt that holds one of them would match a dozen
-titles. List them in the config and they are dropped from every prompt before
-claims are matched, like "the" and "that":
+titles. Add this key to `context/ledger.config.json` and those words are
+dropped from every prompt before claims are matched, like "the" and "that":
 
 ```json
-"ignoreWords": ["unreal", "engine", "game", "editor"]
+{
+  "repository": "engine-lessons",
+  "displayName": "Engine lessons",
+  "appliesTo": ["*.uproject"],
+  "ignoreWords": ["unreal", "engine", "game", "editor"]
+}
 ```
 
+An ignored word finds nothing, wherever a claim holds it: in a title, a topic
+or an entity as much as in a statement. Do not rely on one as a claim's only
+matching word, and run `node src/evaluate.mjs` after changing the list: a
+scenario whose prompt matched through an ignored word now fails.
 `ignoreWords` works in any ledger, shared or not.
 
 Keep project decisions out of a shared ledger. A claim there is read in every
@@ -373,8 +401,10 @@ project it applies to, so it must be true in all of them: name no file, class
 or level that belongs to one project, except inside `detail`.
 
 A hook in the user settings starts one Node process per prompt in every
-project. In a project the ledger does not apply to, it reads one config file
-and a few folder listings and exits.
+project. In a project the ledger does not apply to, it reads one config file,
+lists the session's folder, each folder above it up to the drive root, and up
+to 200 folders directly under it, and exits. Measure it on your machine
+before leaving it on: it is a fraction of a second, paid on every prompt.
 
 ## How a claim is chosen
 
@@ -472,7 +502,9 @@ All of these were checked against the code or by running it.
   project by position, it is copied into each project. Edit one copy only, and
   use `check-vendor.mjs` to see whether the others still match. Do not replace
   the folder with a symlink or a junction to a shared copy: run through a
-  link, the hook prints nothing.
+  link, the hook prints nothing. (A shared ledger, above, is a different
+  thing: one ledger that several projects read, with its own real copy of the
+  tool.)
 
 ## Tests
 
@@ -480,7 +512,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-116 tests. They build an invented project in a temp folder
+117 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

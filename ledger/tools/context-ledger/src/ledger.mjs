@@ -577,7 +577,7 @@ function assemble(selected, { droppedMandatory, standing, matched, cut }) {
   // anything that has to choose between claims reads `priority` instead.
   const output = { bindingInvariants: [], currentVerifiedFacts: [], acceptedIntent: [], openConflicts: [], requiredEvidence: [], verificationCommands: [], expansionHandles: [], droppedMandatory, priority: selected.map(claim => claim.id), standing, matched, cut };
   for (const claim of selected) {
-    const compact = { id: claim.id, title: claim.title, statement: claim.statement, ...(claim.detail ? { hasDetail: true } : {}), state: claim.state, authority: claim.authority, provenance: claim.evidence.map(item => ({ path: item.path, locator: item.locator, verifiedAtCommit: item.verifiedAtCommit })) };
+    const compact = { id: claim.id, title: claim.title, statement: claim.statement, ...(typeof claim.detail === "string" && claim.detail.trim() ? { hasDetail: true } : {}), state: claim.state, authority: claim.authority, provenance: claim.evidence.map(item => ({ path: item.path, locator: item.locator, verifiedAtCommit: item.verifiedAtCommit })) };
     output[classify(claim)].push(compact);
     output.expansionHandles.push(claim.id);
     for (const evidence of claim.evidence) {
@@ -750,8 +750,10 @@ export function currentClaims(ledger) {
   return stableSort(ledger.claims.filter(claim => activeStates.has(claim.state)), claim => claim.id);
 }
 
-export function gitHead(root = repoRoot) {
-  try { return execFileSync("git", ["-c", `safe.directory=${normalizePath(root)}`, "-C", root, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
+// `trust` is false for a folder that is not the ledger's own project (see
+// repositoryState in hook.mjs).
+export function gitHead(root = repoRoot, trust = true) {
+  try { return execFileSync("git", [...(trust ? ["-c", `safe.directory=${normalizePath(root)}`] : []), "-C", root, "rev-parse", "HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
   catch { return "unknown"; }
 }
 

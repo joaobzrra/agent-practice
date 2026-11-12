@@ -88,14 +88,44 @@ its hook registered in the user settings. The package's `README.md` has the
 steps under "One ledger for several projects".
 
 When a message is headed with a name that is not the project's, it came from
-a shared ledger, and the command it gives for reading a claim carries that
-ledger's full path. Write to it from its own folder, with the same claim
-shape and the same gates.
+a shared ledger: the heading is that ledger's `displayName`. The command it
+gives for reading a claim carries that ledger's full path and runs from any
+folder; use it as printed, not the project form. Write to a shared ledger
+from its own folder (`cd <shared ledger>/tools/context-ledger`), with the
+same claim shape and the same gates.
+
+A shared ledger opens every session it applies to with its heading and a
+count of its claims, even when it has no universal claim. If that block is
+missing in a project it should serve, check in this order: a file matching
+`appliesTo` is in the session's folder, above it or directly under it;
+`validate` passes in the shared ledger's folder; its hook is in the user
+settings. Registering it there is the operator's step: give them the entry
+to add, do not edit the user settings yourself. A session started before the
+registration does not have the hook; start a new one.
 
 Before writing a claim, decide where it belongs. Would it bite a new project
 on the same stack with different features? Then it is a shared claim: write
-it without any name that belongs to one project (those go in `detail`). If it
-is about this project's design or code, it stays in the project's ledger.
+it without any name that belongs to one project (a class, a file, a level;
+those go in `detail`, as where the lesson was learned). If it is about this
+project's design or code, it stays in the project's ledger. If no shared
+ledger exists for that stack, write it in the project's ledger and say so to
+the operator: starting a shared ledger is their call.
+
+Three things differ in a shared ledger:
+
+- `authority.source` names what the lesson came from in words a reader in
+  another project can follow (`"session, 2026-03-02"`, an engine source file,
+  a document's path). A handoff name from one project means nothing there.
+- `scope.paths` is matched against the session's project, so use a path only
+  when every project on the stack has that file at that place (a config file
+  the stack defines).
+- The ledger may list `ignoreWords` in its config: words every claim shares,
+  dropped from every prompt. A topic that is on that list finds nothing.
+  Read the list before choosing topics.
+
+A shared ledger that is a git repository is separate from the project's: a
+commit in the project does not cover it. Stage the claim there and commit it
+under the same rule as any commit, when the operator says to commit.
 
 ## Privacy: check before you commit
 
@@ -209,8 +239,11 @@ statement, and never runs `expand`, must still do the right thing. Evidence
 that a careful reader would want before overturning the claim belongs in
 `detail`. A step the next session must take does not.
 
-To shorten a statement that already exists, put the old text in `detail`
-unchanged and write the new statement above it. Nothing is lost, and a
+To shorten a statement that already exists, move the old text into `detail`
+unchanged and write a new, shorter `statement`. If the claim already has a
+`detail`, put the old statement first and keep what was there after it. The
+claim's `state` and `history` do not change: this is a rewording of a claim
+that is still right, not a supersede. Nothing is lost, and a
 conversation that holds the old wording is sent the new one once, marked as
 changed.
 
@@ -474,7 +507,9 @@ starts without it, run `node src/cli.mjs validate`: malformed JSON in
 says `Given earlier in this session and relevant again: CLM-...`, the rule is
 further up the conversation. If you cannot find it, read it:
 `node tools/context-ledger/src/cli.mjs expand --claim <id>`, from the project
-root (the hook prints the command in that form). The same command reads any
+root (the hook prints the command in that form; a shared ledger's message
+prints its own, with a full path, and that is the one to run for its
+claims). The same command reads any
 claim listed by title only. The hook itself needs no installed packages;
 the CLI does, and fails loudly without `tools/context-ledger/node_modules`.
 

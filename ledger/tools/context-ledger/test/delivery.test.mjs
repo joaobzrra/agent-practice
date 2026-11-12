@@ -566,6 +566,36 @@ test("a shared ledger speaks only in the projects it applies to", () => {
   assert.equal(says(other), false, "a project of another kind is not its concern");
   assert.equal(says(home.root), true, "and its own project is never filtered");
   assert.equal(says(null), true, "nor a caller that does not say where the session is");
+  mkdirSync(join(home.root, "..cache"));
+  assert.equal(says(join(home.root, "..cache")), true, "nor a folder of its own whose name begins with two dots");
+});
+
+test("a shared ledger matches a file against the project that holds it, wherever the session started", () => {
+  // The claim is scoped to db/migrations. That path is counted from the
+  // project's folder, which is where the matching file is: not from a
+  // subfolder the session was started in, and not from a folder that holds
+  // several projects.
+  const home = makeProject();
+  writeFileSync(join(home.root, "context", "ledger.config.json"), JSON.stringify({ ...fixtureConfig, appliesTo: ["*.uproject"] }), "utf8");
+  const stateRoot = tempDir("ledger-delivery-");
+  const shelf = tempDir("ledger-shelf-");
+  const game = join(shelf, "GameOne");
+  const file = join(game, "db", "migrations", "0001_init.sql");
+  mkdirSync(join(game, "db", "migrations"), { recursive: true });
+  mkdirSync(join(game, "Source"));
+  writeFileSync(join(game, "GameOne.uproject"), "{}", "utf8");
+  writeFileSync(file, "", "utf8");
+  mkdirSync(join(shelf, "notes", "db", "migrations"), { recursive: true });
+  const opens = (project, path = file) => context(buildHookOutput("PostToolUse", { session_id: `where-${Math.random()}`, tool_name: "Read", tool_input: { file_path: path } }, { root: home.root, stateRoot, project }));
+
+  assert.match(opens(game), /A bare ALTER TABLE/, "a session at the project's folder");
+  assert.match(opens(join(game, "Source")), /A bare ALTER TABLE/, "a session in a subfolder of the project");
+  assert.match(opens(shelf), /A bare ALTER TABLE/, "a session in the folder that holds the project");
+  assert.match(opens(shelf, join(shelf, "db", "migrations", "x.sql")), /A bare ALTER TABLE/, "a file in no project is counted from the session's folder");
+  assert.equal(opens(shelf, join(shelf, "notes", "db", "migrations", "x.sql")), "", "so the same folders one level down are another path");
+  assert.equal(opens(shelf, join(shelf, "notes", "GameOne", "db", "migrations", "x.sql")), "", "and a folder that only shares a project's name is not that project");
+  const typed = context(buildHookOutput("UserPromptSubmit", { session_id: "where-typed", prompt: "look at db/migrations/0001_init.sql" }, { root: home.root, stateRoot, project: join(game, "Source") }));
+  assert.match(typed, /A bare ALTER TABLE/, "a path typed in a prompt is counted from the project's folder too");
 });
 
 test("the hook drops the ledger's ignored words from a prompt", () => {

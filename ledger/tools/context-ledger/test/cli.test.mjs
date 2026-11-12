@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { stableJson } from "../src/ledger.mjs";
-import { fixtureConfig, makeProject } from "../fixtures/project.mjs";
+import { fixtureConfig, makeProject, tempDir } from "../fixtures/project.mjs";
 
 // The CLI finds its project from its own location, so these run a copy of the
 // package installed inside the fixture project. This is also what proves the
@@ -50,6 +50,9 @@ test("a claim may carry a detail: validate accepts it, expand prints it, an empt
   assert.equal(routed.includes("four minutes"), false);
   write("");
   assert.notEqual(cli("validate").status, 0, "an empty detail is a mistake, not a claim without one");
+  write("   ");
+  assert.notEqual(cli("validate").status, 0, "and so is one that holds only spaces");
+  assert.equal(cli("route", "--prompt", "alter the orders table", "--format", "markdown").stdout.includes("[+detail]"), false, "which is not marked as something to go and read");
 });
 
 test("audit-documents finds every narrative file registered", () => {
@@ -108,7 +111,10 @@ test("the hook, started as a program, learns the session's project from its envi
   const own = makeProject({ install: true });
   writeFileSync(join(own.root, "context", "ledger.config.json"), JSON.stringify({ ...fixtureConfig, appliesTo: ["*.uproject"] }), "utf8");
   const hook = realpathSync.native(join(dirname(own.cli), "hook.mjs"));
-  const elsewhere = realpathSync.native(tmpdir());
+  // An empty folder of its own. The temp folder itself would not do: the
+  // hook also looks one level under the session's folder, and other tests
+  // put folders with a matching file there while this one runs.
+  const elsewhere = realpathSync.native(tempDir("ledger-elsewhere-"));
   const { CLAUDE_PROJECT_DIR: inherited, ...bare } = process.env;
   const ask = (env, extra = {}) => {
     const session = `guest-probe-${randomUUID()}`;
