@@ -108,7 +108,8 @@ work itself. Explanations stay conversational and explain the why.
 
 Tag every non-obvious claim with how you know it:
 
-- **Verified** — you ran it and read the output. Include the output.
+- **Verified** — you ran it and read the output. Quote the line or
+  lines that prove it, not the whole output.
 - **Inferred** — you read the code but did not run it.
 - **Assumed** — you are guessing. State the guess and what would prove it.
 

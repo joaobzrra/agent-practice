@@ -5,6 +5,12 @@ description: Use when a decision, ruling, correction, gotcha or constraint lands
 
 # The context ledger
 
+> **Not included in this repository:** the `context-ledger` package this skill
+> drives (`tools/context-ledger`, its CLI and its hook). The skill is published
+> for the method: the claim schema, how retrieval scores a claim, and the
+> gates. The commands below will not run until you supply your own
+> implementation of that package.
+
 A project's ledger is the thing that stops a session asking a question the
 project already answered. It is not documentation and not memory — it is a set
 of **claims** that a hook injects into sessions automatically, scored against

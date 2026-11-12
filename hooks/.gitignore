@@ -4,3 +4,6 @@ identity.json
 # Real per-repo CI map for lib/ci-gate.mjs — copy ci-commands.example.json to
 # ci-commands.json and list your own repos. Local to your machine.
 ci-commands.json
+# Hashes of the per-repo `.claude/ci-command` files the gate has recorded. The
+# keys are paths on your machine.
+ci-command-approvals.json

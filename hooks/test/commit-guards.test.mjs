@@ -83,6 +83,14 @@ git(['add', '-A']);
 const r2 = hook('git commit -F .git/COMMITMSG');
 expect('api key blocked', r2.code, 2);
 expect('  ...reported once, not twice', (r2.err.match(/cfg\.ts/g) || []).length, 1);
+expect('  ...the secret itself is not echoed', r2.err.includes(FAKE_KEY) ? 1 : 0, 0);
+expect('  ...the line number is given instead', r2.err.includes('cfg.ts:1 ') ? 1 : 0, 1);
+
+// A hit lower in a file: the number must be the line in the new file.
+writeFileSync(`${REPO}/cfg.ts`, `const a = 1;\nconst b = 2;\nconst k = "${FAKE_KEY}";\n`);
+git(['add', '-A']);
+const r2b = hook('git commit -F .git/COMMITMSG');
+expect('  ...line number follows the hunk header', r2b.err.includes('cfg.ts:3 ') ? 1 : 0, 1);
 
 writeFileSync(`${REPO}/cfg.ts`, 'const k = process.env.K;\n');
 const PW_KEYWORD = 'pass' + 'word';

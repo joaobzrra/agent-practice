@@ -13,10 +13,13 @@ Installed 2026-08-23 from the `/insights` report covering 2026-07-04 → 2026-08
 | `lib/deploy-freshness.mjs` | **Advisory.** Before a command that mutates a remote target, reports uncommitted tracked files and unpushed commits — the state the target cannot have. |
 | `lib/ci-gate.mjs` | **Blocks** a commit when the repo's full CI command fails. Opt-in per repo; runs last, after the cheap checks pass. |
 | `ci-commands.json` | Your local, git-ignored map of `"<repo root>": "<full CI command>"`. Copy `ci-commands.example.json` to create it. Absent means no repo has opted in. |
+| `ci-command-approvals.json` | Local, git-ignored. One content hash per checkout that carries its own `.claude/ci-command`. Written by the gate and by the script below. |
+| `approve-ci-command.mjs` | For the machine's owner: approve a changed per-repo command file, or revoke its record. |
 | `identifier-guard.mjs` | **Advisory.** PostToolUse on `Edit`/`Write`/`MultiEdit`. Flags freshly written GTA/FiveM asset names, coordinate literals and rotation calls in `.lua`, and asks where each came from. |
-| `test/commit-guards.test.mjs` | 28 cases covering both commit guards, the allow paths, the exemptions and the repo resolution. |
+| `test/commit-guards.test.mjs` | 31 cases covering both commit guards, the allow paths, the exemptions, the repo resolution, and that a blocked secret is not echoed. |
 | `test/new-guards.test.mjs` | 21 cases covering deploy freshness and the identifier guard, including the silence cases. |
-| `test/ci-gate.test.mjs` | 24 cases covering the CI gate: opt-in sources, docs-only skip, `-am`, ordering after the cheap checks, a broken map. |
+| `test/ci-gate.test.mjs` | 53 cases covering the CI gate: opt-in sources, docs-only skip, `-am`, ordering after the cheap checks, the per-repo file being edited, deleted or added to dodge the gate, the working-tree note, broken config files. |
+| `test/fail-closed.test.mjs` | 16 cases covering what happens when a guard file is itself broken: a commit blocks, everything else is left alone. |
 
 Registered in `../settings.json` under `hooks.PreToolUse` and `hooks.PostToolUse`.
 
@@ -112,15 +115,80 @@ prose, and a stale test got through. Now it is a check.
   not listed is never slowed down. With no `ci-commands.json` at all, no repo
   has opted in.
 - **Per-repo override.** `<repo>/.claude/ci-command` wins over the central map.
-  The first non-blank line that does not start with `#` is the command.
+  The first non-blank line that does not start with `#` is the command. It is
+  how each git worktree gets its own command, for example its own test port.
 - **Docs-only commits are skipped.** If every file in the commit is `.md` or
-  `.txt`, CI is not run.
+  `.txt`, CI is not run. Know what that leaves out: in a repository where the
+  Markdown *is* the product (skills, agent instructions), this gate checks
+  nothing. Test those the way `lessons/test-rule-changes-on-fresh-agents.md`
+  describes.
 - **Runs last.** Only when the message-shape and leak-scan checks passed, so no
   CI time is spent on a commit that is already blocked.
 - **Working tree, not the staged snapshot.** With a partly staged commit, CI
-  also sees the unstaged edits.
-- **A broken `ci-commands.json` blocks.** Silently allowing every commit would
-  switch the gate off without anyone noticing.
+  also sees the unstaged edits and any new file that was never added. The gate
+  cannot check out the staged snapshot without a second copy of the
+  dependencies, so it says so instead: when a commit is allowed while tracked
+  edits or untracked files are left out of it, the agent gets a note naming
+  them.
+- **A broken `ci-commands.json` or `ci-command-approvals.json` blocks.**
+  Silently allowing every commit would switch the gate off without anyone
+  noticing.
+
+### The per-repo file cannot switch the gate off
+
+`.claude/ci-command` lives inside the repository, which is where the agent
+being gated works. The first version trusted it as found. An agent blocked by a
+failing suite could have written `exit 0` into it and committed. An independent
+review caught that before anyone did it.
+
+The rule now is **trust on first use, block on change**. The record is a hash
+per checkout in `ci-command-approvals.json`, here in the hooks folder, outside
+any repository.
+
+| The file is... | What the gate does |
+|---|---|
+| new, in a checkout the central map does not list (a fresh worktree) | Records it and uses it. No ceremony. |
+| new, in a checkout the central map already gates | Blocks. It would replace an existing gate, so it needs approval. |
+| recorded, and unchanged | Uses it. |
+| recorded, and its content changed | Blocks until approved again. |
+| recorded, and now missing | Blocks until the record is revoked. |
+| recorded, with no command line in it | Falls through to the central map. |
+
+```
+node approve-ci-command.mjs <repo root>            # approve the file as it is now
+node approve-ci-command.mjs <repo root> --revoke   # drop the record
+```
+
+That script is for the person who owns the machine. An agent that runs it to
+get a commit through is bypassing the gate, and the block message says so.
+
+What this does not stop:
+
+- Whoever sets up a brand-new checkout chooses its first command. The merge
+  into the main checkout is still gated by the main checkout's own, approved
+  command.
+- An agent that edits `ci-commands.json` or `ci-command-approvals.json` in this
+  folder. That is a deliberate act outside its repository. The written rule
+  ("never disable or bypass a guard hook") and review cover it; this mechanism
+  does not.
+
+## When a guard itself fails
+
+A guard that crashes and a guard that passes must not look the same.
+
+| Situation | Result | Why |
+|---|---|---|
+| The hook input cannot be parsed | Allowed | Nothing is known about the command, and this hook runs on every shell call. |
+| The command parser fails to load, and the line is plainly a `git commit` | **Blocked** | A commit that could not be checked. |
+| The command parser fails to load, any other command | Allowed, with a warning | A broken hook must not freeze the shell. |
+| `message-shape`, `leak-scan` or `ci-gate` fails to load or throws, on a commit | **Blocked**, naming the check | Same reason. |
+| The repository cannot be determined | **Blocked** | The diff cannot be read. |
+| An advisory (`deploy-freshness`, the working-tree note) throws | Allowed, silently | An advisory never takes down the call it advises on. |
+| The hook runs out of time | Allowed | The harness does this, not the hook. See the timeout lesson below. |
+
+The leak scan reports the file, the line number and what kind of thing it
+found. It does not print the matching text, because that would copy the secret
+into the hook output and the session log.
 
 **Timeout lesson.** A hook that times out does not block; it lets the commit
 through. The gate's own CI timeout is 540 s (`CI_TIMEOUT_MS`), so the
@@ -134,6 +202,7 @@ Raise the CI timeout and the hook timeout together, hook always larger.
 node test/commit-guards.test.mjs
 node test/new-guards.test.mjs
 node test/ci-gate.test.mjs
+node test/fail-closed.test.mjs
 ```
 
 Run them from this directory or from anywhere else — all resolve the hooks

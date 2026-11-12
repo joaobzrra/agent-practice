@@ -37,6 +37,17 @@ process.stdin.on('end', async () => {
   try {
     ({ isGitCommit, resolveRepo } = await import('./lib/git-command.mjs'));
   } catch (e) {
+    // Without the parser none of the checks can run. If this plainly is a
+    // commit, block: a guard that cannot load must not wave a commit through.
+    // Anything else is let through, so a broken hook cannot freeze the shell.
+    if (/\bgit\b[^|;&]*\bcommit\b/.test(command) && !/--dry-run/.test(command)) {
+      process.stderr.write(
+        `Blocked: the commit guards could not load (${e.message}), so this ` +
+          `commit was not checked.\n\nFix the hook files, or get the user's ` +
+          `call before committing another way.\n`,
+      );
+      process.exit(2);
+    }
     process.stderr.write(`commit-guards: parser failed to load: ${e.message}\n`);
     process.exit(0);
   }
@@ -88,12 +99,20 @@ process.stdin.on('end', async () => {
 
   const reasons = [];
 
+  // From here on this is a confirmed commit, so every check fails CLOSED: one
+  // that cannot load, or that throws, blocks. Letting the commit through would
+  // mean a broken guard and a working guard look the same from outside.
+  const crashed = (name, e) =>
+    `Blocked: the ${name} check crashed (${e.message}), so this commit was not ` +
+    `checked.\n\nFix the hook, or get the user's call before committing ` +
+    `another way.`;
+
   try {
     const shape = await import('./lib/message-shape.mjs');
     const r = shape.check(command);
     if (r) reasons.push(r);
   } catch (e) {
-    process.stderr.write(`commit-guards: message-shape check failed to load: ${e.message}\n`);
+    reasons.push(crashed('message-shape', e));
   }
 
   try {
@@ -101,22 +120,39 @@ process.stdin.on('end', async () => {
     const r = leak.check(command, repo);
     if (r) reasons.push(r);
   } catch (e) {
-    process.stderr.write(`commit-guards: leak-scan check failed to load: ${e.message}\n`);
+    reasons.push(crashed('leak-scan', e));
   }
 
   // Full CI last, and only when the cheap checks passed: no reason to spend
   // minutes of CI on a commit that is already blocked.
+  let ci = null;
   if (reasons.length === 0) {
     try {
-      const ci = await import('./lib/ci-gate.mjs');
+      ci = await import('./lib/ci-gate.mjs');
       const r = ci.check(command, repo);
       if (r) reasons.push(r);
     } catch (e) {
-      process.stderr.write(`commit-guards: ci-gate check failed to load: ${e.message}\n`);
+      reasons.push(crashed('ci-gate', e));
     }
   }
 
-  if (reasons.length === 0) process.exit(0);
+  if (reasons.length === 0) {
+    // Allowed. One thing is still worth saying: CI ran on the working tree, so
+    // files this commit leaves out were part of what passed.
+    try {
+      const note = ci?.advisory(command, repo);
+      if (note) {
+        process.stdout.write(
+          JSON.stringify({
+            hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: note },
+          }),
+        );
+      }
+    } catch {
+      // An advisory must never take down the commit it is advising on.
+    }
+    process.exit(0);
+  }
 
   process.stderr.write(reasons.join('\n\n---\n\n') + '\n');
   process.exit(2);

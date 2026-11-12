@@ -10,7 +10,7 @@ the rules, the roles, and the hooks that enforce them.**
 <p>
 <img alt="Node 18+" src="https://img.shields.io/badge/Node-18%2B-5FA04E?style=flat-square&logo=node.js&logoColor=white">
 <img alt="Dependencies: none" src="https://img.shields.io/badge/dependencies-none-2DC6BB?style=flat-square">
-<img alt="73 hook tests passing" src="https://img.shields.io/badge/hook%20tests-73%20passing-2DC6BB?style=flat-square">
+<img alt="121 hook tests passing" src="https://img.shields.io/badge/hook%20tests-121%20passing-2DC6BB?style=flat-square">
 <img alt="Licence MIT" src="https://img.shields.io/badge/licence-MIT-F5A623?style=flat-square">
 </p>
 
@@ -24,6 +24,11 @@ platform, a desktop map editor, a live game server and a shipped UE5 game.
 
 Every rule in here exists because its absence cost something.
 
+That also means the rules come from one person's failures, on one person's
+projects. Yours will differ. Keep the reason behind a rule and adjust the rule;
+a rule copied without its reason is the first one an agent talks its way
+around.
+
 ## New here? Read in this order
 
 You do not need all of it. Start small and add a piece when its absence hurts.
@@ -35,7 +40,10 @@ You do not need all of it. Start small and add a piece when its absence hurts.
    your last bad week.
 3. **[`AGENTS.md`](AGENTS.md)**. Copy it into your own setup. Rewrite
    "Calibrating explanations" and "Environment" to describe you and your
-   machine; an agent that knows who it is talking to explains better.
+   machine; an agent that knows who it is talking to explains better. Claude
+   Code reads `CLAUDE.md`, not `AGENTS.md`, so the [`CLAUDE.md`](CLAUDE.md)
+   here is one line that points at it. For a project's own file, start from
+   [`templates/project-CLAUDE.md`](templates/project-CLAUDE.md).
 4. **[`hooks/`](hooks/README.md)**. Install the commit guards. This is the step
    that turns advice into something the agent cannot skip.
 5. **`skills/`**, one at a time, when you need it. `session-close` first. A
@@ -62,17 +70,19 @@ So the system is built on one idea:
 
 | | |
 |---|---|
-| **`AGENTS.md`** | The working agreement. Every rule, and why it exists. |
+| **`AGENTS.md`** | The working agreement. Every rule, and why it exists. `CLAUDE.md` is a one-line pointer to it. |
+| **`templates/`** | A fill-in skeleton for one project's own instruction file: commands, full CI, boundaries, deploy target. |
 | **`agents/`** | Four roles — `scout`, `researcher`, `implementer`, `reviewer` — each pinned to a model tier by the judgment its job requires. |
 | **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
+| **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it. |
 
 ## The rules that matter most
 
 <table>
 <tr><td width="34%"><b>Label every claim</b></td><td>
-<b>Verified</b> — you ran it and read the output; include the output.
+<b>Verified</b> — you ran it and read the output; quote the line or lines that prove it, not the whole output.
 <b>Inferred</b> — you read the code but did not run it.
 <b>Assumed</b> — you are guessing; say what would prove it.
 No confidence percentages: a number invents precision you do not have.
@@ -117,26 +127,33 @@ quality that depends on remembering is not quality.
 
 | Hook | What it does |
 |---|---|
-| `lib/leak-scan.mjs` | Blocks a staged diff containing a credential shape, or your username / email / home path in a source file. |
+| `lib/leak-scan.mjs` | Blocks a staged diff containing a credential shape, or your username / email / home path in a source file. Reports the file and line, never the matching text. |
 | `lib/message-shape.mjs` | Blocks an inline commit message the shell would mangle. PowerShell rewrites quotes, eats backticks and expands `$` — the fix is never better escaping, it is writing the message to a file. |
-| `lib/ci-gate.mjs` | Blocks a commit in an opted-in repo whose full CI command fails. |
+| `lib/ci-gate.mjs` | Blocks a commit in an opted-in repo whose full CI command fails. Also blocks when the file that names that command was changed to get past it. |
 | `lib/deploy-freshness.mjs` | Warns, before a command that changes a remote target, about uncommitted files and unpushed commits: the state the target cannot have. |
 | `identifier-guard.mjs` | Warns, after a file edit, about a freshly written game asset name, model hash or world coordinate, and asks where it came from. |
 
 ```console
 $ node hooks/test/commit-guards.test.mjs
-28 passed, 0 failed
+31 passed, 0 failed
 
 $ node hooks/test/new-guards.test.mjs
 21 passed, 0 failed
 
 $ node hooks/test/ci-gate.test.mjs
-24 passed, 0 failed
+53 passed, 0 failed
+
+$ node hooks/test/fail-closed.test.mjs
+16 passed, 0 failed
 ```
 
 A guard nobody tests is a guard nobody can trust. One thing the CI gate taught:
 a hook that times out does not block, it lets the action through. The hook's
 timeout has to stay above the longest thing it runs.
+
+A guard that crashes must not look like a guard that passed. On a commit, a
+check that cannot load blocks. [`hooks/README.md`](hooks/README.md) has the
+table of what happens in each failure, and what the guards do not catch.
 
 ## Agent roles, tiered by judgment
 

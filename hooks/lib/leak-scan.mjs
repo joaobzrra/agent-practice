@@ -123,6 +123,7 @@ export function check(command, repo) {
   const findings = [];
   let file = '';
   let ext = '';
+  let lineNo = 0; // line number in the new file, read from each hunk header
 
   for (const line of text.split('\n')) {
     const header = line.match(/^\+\+\+ b\/(.+)$/);
@@ -131,12 +132,20 @@ export function check(command, repo) {
       ext = (file.split('.').pop() || '').toLowerCase();
       continue;
     }
+    const hunk = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+    if (hunk) {
+      lineNo = Number(hunk[1]);
+      continue;
+    }
     if (!line.startsWith('+') || line.startsWith('+++')) continue;
     const added = line.slice(1);
+    const at = lineNo++;
 
+    // A finding records WHERE, never WHAT. Echoing the matching line would copy
+    // the secret into the hook output, and from there into the session log.
     for (const [re, label] of CREDENTIAL_PATTERNS) {
       if (re.test(added)) {
-        findings.push({ file, label, line: added.trim().slice(0, 120) });
+        findings.push({ file, label, line: at });
         break; // the most specific pattern wins; no need to list overlaps
       }
     }
@@ -145,14 +154,14 @@ export function check(command, repo) {
       findings.push({
         file,
         label: `an assigned ${assigned[1].toLowerCase()} with a real-looking value`,
-        line: added.trim().slice(0, 120),
+        line: at,
       });
     }
 
     if (SOURCE_EXT.has(ext)) {
       for (const [re, label] of IDENTITY_PATTERNS) {
         if (re.test(added)) {
-          findings.push({ file, label, line: added.trim().slice(0, 120) });
+          findings.push({ file, label, line: at });
           break; // one identity hit per line is enough
         }
       }
@@ -167,14 +176,15 @@ export function check(command, repo) {
     const key = `${f.file}::${f.label}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    lines.push(`  ${f.file} — ${f.label}\n    ${f.line}`);
+    lines.push(`  ${f.file}:${f.line} — ${f.label}`);
     if (lines.length >= 12) break;
   }
 
   return (
     `Blocked: the staged diff contains something that should not be committed.\n\n` +
     lines.join('\n') +
-    `\n\nUnstage or rewrite those lines, then commit again. If a hit is a false ` +
+    `\n\nThe matching text is left out of this message on purpose. Open the file ` +
+    `at that line.\n\nUnstage or rewrite those lines, then commit again. If a hit is a false ` +
     `positive, say so explicitly and get the user's call before bypassing — do ` +
     `not disable the hook to get past it.`
   );
