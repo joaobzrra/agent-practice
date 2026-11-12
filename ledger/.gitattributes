@@ -1,0 +1,4 @@
+# The tool writes its generated views with LF and `build-index --check`
+# compares bytes. Without this, a Windows checkout with core.autocrlf turns
+# them into CRLF and the check reports drift on identical content.
+* text eol=lf

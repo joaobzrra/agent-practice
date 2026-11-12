@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://context-ledger.local/schemas/scenario.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "prompt", "paths", "expectedClaims"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^SCN-[a-z0-9-]+$" },
+    "name": { "type": "string", "minLength": 3 },
+    "prompt": { "type": "string", "minLength": 8 },
+    "paths": { "type": "array", "items": { "type": "string" } },
+    "expectedClaims": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^CLM-[a-z0-9-]+$" }, "uniqueItems": true }
+  }
+}

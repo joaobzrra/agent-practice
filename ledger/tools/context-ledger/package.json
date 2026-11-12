@@ -1,0 +1,26 @@
+{
+  "name": "context-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A per-project ledger of decisions and hazards, routed into agent sessions by a hook.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "context-ledger": "src/cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "evaluate": "node src/evaluate.mjs",
+    "validate": "node src/cli.mjs validate",
+    "build": "node src/cli.mjs build-index",
+    "ci": "node --test && node src/evaluate.mjs && node src/cli.mjs validate && node src/cli.mjs audit-documents && node src/cli.mjs build-index --check",
+    "check-vendor": "node check-vendor.mjs"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

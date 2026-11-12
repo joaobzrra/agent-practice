@@ -1,8 +1,9 @@
 name: tests
 
-# Nothing here has dependencies, so there is nothing to install: check out,
-# pick a Node version, run the test files. The file keeps its first name so
-# the badge URL in the README stays valid.
+# The hooks and the library have no dependencies, so the first job installs
+# nothing: check out, pick a Node version, run the test files. The ledger has
+# two, so it gets its own job with an install step. The file keeps its first
+# name so the badge URL in the README stays valid.
 
 on:
   push:
@@ -32,3 +33,22 @@ jobs:
       - run: node library/tools/build-index.test.mjs
       # The committed example index must match what the builder generates.
       - run: node library/tools/build-index.mjs --check
+
+  ledger:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ledger/tools/context-ledger
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      # The package's own tests, then the example ledger in ledger/context:
+      # scenarios, schema validation, document registry, generated views.
+      - run: npm run ci

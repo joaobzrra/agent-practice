@@ -1,0 +1,23 @@
+[
+  {
+    "id": "SCN-bookings-migration",
+    "name": "A migration on the bookings table surfaces the lock hazard",
+    "prompt": "add a notes column to the bookings table",
+    "paths": ["db/migrations/0042_booking_notes.sql"],
+    "expectedClaims": ["CLM-bookings-table-lock"]
+  },
+  {
+    "id": "SCN-reminder-wording",
+    "name": "Editing the reminder email surfaces the send-once rule",
+    "prompt": "change the wording of the reminder email",
+    "paths": ["src/emails/reminder.tsx"],
+    "expectedClaims": ["CLM-reminder-emails-idempotent"]
+  },
+  {
+    "id": "SCN-waiting-list-page",
+    "name": "Building the waiting list page surfaces the open question",
+    "prompt": "build the waiting list page",
+    "paths": ["src/waiting-list/page.tsx"],
+    "expectedClaims": ["CLM-waiting-list-not-decided"]
+  }
+]

@@ -1,0 +1,90 @@
+{
+  "claims": [
+    {
+      "entities": [
+        "bookings",
+        "lock_timeout",
+        "ALTER TABLE"
+      ],
+      "id": "CLM-bookings-table-lock",
+      "kind": "hazard",
+      "paths": [
+        "db/migrations"
+      ],
+      "relationships": [],
+      "state": "verified",
+      "topics": [
+        "migration",
+        "schema",
+        "database",
+        "bookings",
+        "lock",
+        "alter"
+      ]
+    },
+    {
+      "entities": [
+        "es"
+      ],
+      "id": "CLM-customer-copy-spanish",
+      "kind": "invariant",
+      "paths": [
+        "src/emails",
+        "src/pages"
+      ],
+      "relationships": [],
+      "state": "accepted",
+      "topics": [
+        "copy",
+        "language",
+        "email",
+        "translation",
+        "text"
+      ]
+    },
+    {
+      "entities": [
+        "reminder_sent_at"
+      ],
+      "id": "CLM-reminder-emails-idempotent",
+      "kind": "invariant",
+      "paths": [
+        "src/jobs/reminders.ts",
+        "src/emails"
+      ],
+      "relationships": [],
+      "state": "enforced",
+      "topics": [
+        "reminder",
+        "email",
+        "job",
+        "duplicate",
+        "idempotent"
+      ]
+    },
+    {
+      "entities": [
+        "waiting list"
+      ],
+      "id": "CLM-waiting-list-not-decided",
+      "kind": "conflict",
+      "paths": [
+        "src/waiting-list"
+      ],
+      "relationships": [],
+      "state": "contested",
+      "topics": [
+        "waiting",
+        "waitlist",
+        "booking",
+        "notify"
+      ]
+    }
+  ],
+  "generatedFrom": [
+    "context/claims.json",
+    "context/documents.json",
+    "context/scenarios.json"
+  ],
+  "schemaVersion": 1
+}

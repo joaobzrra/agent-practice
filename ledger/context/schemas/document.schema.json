@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://context-ledger.local/schemas/document.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "path", "title", "kind", "state", "authorityRank", "stateAsOf", "topics", "replaces"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^DOC-[a-z0-9-]+$" },
+    "path": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["charter", "design", "spec", "review", "plan", "ledger", "handoff", "runbook", "instruction", "skill", "readme", "inventory"] },
+    "state": { "enum": ["canonical", "current", "historical", "superseded", "draft", "contested"] },
+    "authorityRank": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "stateAsOf": { "type": "string", "format": "date" },
+    "reviewBy": { "type": "string", "format": "date" },
+    "topics": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "replaces": { "type": "array", "items": { "type": "string", "pattern": "^DOC-[a-z0-9-]+$" }, "uniqueItems": true }
+  }
+}

@@ -5,17 +5,17 @@ description: Use when a decision, ruling, correction, gotcha or constraint lands
 
 # The context ledger
 
-> **Not included in this repository:** the `context-ledger` package this skill
-> drives (`tools/context-ledger`, its CLI and its hook). The skill is published
-> for the method: the claim schema, how retrieval scores a claim, and the
-> gates. The commands below will not run until you supply your own
-> implementation of that package. [`example/`](example/README.md) shows the
-> tool's real output for three prompts against four invented claims.
+> **The tool this skill drives is in this repository**, at
+> [`ledger/tools/context-ledger`](../../ledger/tools/context-ledger/README.md):
+> the CLI, the hook, the schemas and the install steps.
+> [`ledger/`](../../ledger/README.md) is an invented project with the tool
+> installed, and shows its real output for three prompts. The claim and the
+> scenario used as examples below are from that project's ledger.
 
 A project's ledger is the thing that stops a session asking a question the
 project already answered. It is not documentation and not memory — it is a set
 of **claims** that a hook injects into sessions automatically, scored against
-the prompt and the files in play.
+the prompt.
 
 Writing to it is a normal part of doing the work, like a commit.
 
@@ -57,13 +57,18 @@ Do not ask permission to record a claim. Write it and say you did, in one line.
 <project>/tools/context-ledger/        the vendored package (never edit here)
 ```
 
-If `context/` does not exist, the project has no ledger. Offer to install one:
+If `context/` does not exist, the project has no ledger. Offer to install one.
+The package's `README.md` has the steps in order (copy the folder, install its
+two packages, create the ledger, register the hook). The command that creates
+the ledger is:
 
 ```bash
-cd <project>/tools/context-ledger && node src/cli.mjs init
+cd <project>/tools/context-ledger
+node src/cli.mjs init --name "<project name>"
 ```
 
-`init` scaffolds `context/` with schemas and templates. It has no rollback — a
+`init` scaffolds `context/`: the schemas, three empty record files and a
+config file. It has no rollback — a
 mid-scaffold failure leaves a partial directory that the overwrite guard then
 blocks; recovery is deleting the seconds-old `context/`.
 
@@ -71,7 +76,8 @@ The package is **vendored per project** because `ledger.mjs` derives the project
 root from its own location. Never edit `tools/context-ledger/` in a project: fix
 it in the canonical project where you maintain the source copy, run its tests
 there, then re-vendor. An edit made in a vendored copy is destroyed by the next
-refresh.
+refresh. `node check-vendor.mjs <other copy>`, run from the source copy,
+reports whether a copy has drifted.
 
 ## Privacy: check before you commit
 
@@ -98,34 +104,36 @@ The full shape, every field required unless marked optional:
 
 ```json
 {
-  "id": "CLM-crlf-fakes-corruption",
-  "title": "Production Laravel files have CRLF endings, so md5 will not match the repo",
-  "statement": "Production Laravel files carry CRLF line endings, so md5sum on the server does not match `git show HEAD:<file> | md5sum` even when the file is untouched — which looks exactly like someone hand-patched production. Before treating a mismatch as tampering, confirm `sed 's/\\r$//' <file> | md5sum` equals the repo blob.",
+  "id": "CLM-bookings-table-lock",
+  "title": "A bare ALTER on the bookings table blocks every page that reads it",
+  "statement": "The `bookings` table is read by every page load and by the nightly reporting job. A bare `ALTER TABLE bookings` waits behind any long read, and every new read then queues behind the ALTER, so the site hangs until it finishes. Run schema changes on `bookings` with `SET lock_timeout = '3s'` and retry, never inside the reporting window (02:00 to 03:00).",
   "kind": "hazard",
-  "state": "accepted",
+  "state": "verified",
   "authority": {
     "kind": "session",
-    "source": "docs/handoffs/HANDOFF-2026-08-08-shared-pc-security.md",
-    "decidedAt": "2026-08-08T00:00:00-03:00"
+    "source": "HANDOFF-2026-03-02.md",
+    "decidedAt": "2026-03-02T00:00:00Z"
   },
   "scope": {
-    "topics": ["crlf", "encoding", "deployment", "laravel", "producao", "deploy"],
-    "paths": ["docs/handoffs/HANDOFF-2026-08-08-shared-pc-security.md"],
-    "entities": ["md5sum", "CRLF"]
+    "topics": ["migration", "schema", "database", "bookings", "lock", "alter"],
+    "paths": ["db/migrations"],
+    "entities": ["bookings", "lock_timeout", "ALTER TABLE"]
   },
   "universal": false,
-  "severity": "high",
+  "severity": "critical",
   "relationships": [],
   "evidence": [],
   "history": [
-    { "from": null, "to": "accepted", "at": "2026-08-08T00:00:00-03:00",
-      "actor": "session", "source": "docs/handoffs/HANDOFF-2026-08-08-shared-pc-security.md" }
+    { "from": null, "to": "accepted", "at": "2026-03-02T00:00:00Z",
+      "actor": "session", "source": "HANDOFF-2026-03-02.md" },
+    { "from": "accepted", "to": "verified", "at": "2026-03-09T00:00:00Z",
+      "actor": "session", "source": "HANDOFF-2026-03-09.md" }
   ]
 }
 ```
 
 `id` matches `^CLM-[a-z0-9-]+$`. Name it after the hazard, not the fix —
-`CLM-crlf-fakes-corruption`, not `CLM-use-sed`.
+`CLM-bookings-table-lock`, not `CLM-use-lock-timeout`.
 
 `kind` is one of `invariant`, `fact`, `intent`, `hazard`, `conflict`.
 
@@ -151,12 +159,12 @@ way it will actually appear:
 
 > Bad: "Set the env vars before running the tests."
 >
-> Good: "The HTTP suite's server needs EDITOR_ALLOW_LOCAL_URLS and
-> EDITOR_SSO_SECRET set in the server's own process, and prefixing them onto a
-> backgrounded Git Bash `php -S` does not propagate. Start it with `powershell
-> -File tests/start-server.ps1`. Set by hand, the failures do not name their
-> cause: without EDITOR_ALLOW_LOCAL_URLS 37 checks fail on a shared
-> `return_url invalida.` message."
+> Good: "The HTTP suite's server needs ALLOW_LOCAL_URLS and SSO_SECRET set in
+> the server's own process, and prefixing them onto a backgrounded Git Bash
+> command does not propagate. Start it with `powershell -File
+> tests/start-server.ps1`. Set by hand, the failures do not name their cause:
+> without ALLOW_LOCAL_URLS 37 checks fail on one shared `invalid return_url`
+> message."
 
 A session that reads the second one recognises the failure it is looking at. A
 session that reads the first one has learned nothing it can act on.
@@ -170,7 +178,8 @@ the claim was worth writing.
     path prefix match    ->  +12 each, bidirectional startsWith
     state 'contested'    ->   +3
     score 0              -> not retrieved, unless the claim is universal or
-                            shares a conflictsWith component with one
+                            shares a conflictsWith component with a claim
+                            that is retrieved
 
 Claims are admitted in two tiers. **Universal claims and anything sharing a
 `conflictsWith` component with them go first**, regardless of score — that is
@@ -180,9 +189,12 @@ lowest **score**. Ties break on id.
 
 Four rules follow, in order of how much they matter:
 
-1. **Prefer `scope.paths` over vocabulary.** A path match is worth six times a
-   word match and needs no guess about how the question will be phrased. If the
-   claim is about files, list them.
+1. **List `scope.paths`, and do not rely on them.** A path match is worth six
+   times a word match, but only where paths are supplied: `route --paths` and
+   scenarios. The hook that runs on each prompt passes the prompt text and no
+   file list, so in a live session a claim is found by its words alone. If the
+   claim is about files, list them, and also give it the words a prompt about
+   those files would contain.
 2. **Add local-language terms beside the English ones** in `topics`, if the
    operator prompts in more than one language. A prompt in the other language
    scores zero against English-only topics.
@@ -205,25 +217,32 @@ scenario to `context/scenarios.json` with the prompt you expect a future session
 to actually type:
 
 ```json
-{ "id": "SCN-crlf-check",
-  "name": "A production md5 mismatch is diagnosed before it is called tampering",
-  "prompt": "o md5 do arquivo em producao nao bate",
-  "paths": [],
-  "expectedClaims": ["CLM-crlf-fakes-corruption"] }
+{ "id": "SCN-bookings-migration",
+  "name": "A migration on the bookings table surfaces the lock hazard",
+  "prompt": "add a notes column to the bookings table",
+  "paths": ["db/migrations/0042_booking_notes.sql"],
+  "expectedClaims": ["CLM-bookings-table-lock"] }
 ```
 
 `id` matches `^SCN-[a-z0-9-]+$`; `name`, `prompt`, `paths` and `expectedClaims`
 are all required, and `expectedClaims` needs at least one entry.
 
-Then confirm retrieval directly:
+Then confirm retrieval directly, **without `--paths`**, because that is what
+the hook sees in a live session:
 
 ```bash
 cd <project>/tools/context-ledger
-node src/cli.mjs route --prompt "o md5 do arquivo em producao nao bate"
+node src/cli.mjs route --prompt "add a notes column to the bookings table"
 ```
 
 If the claim does not come back, the scope is wrong. Fix the scope, not the
-scenario.
+scenario. A scenario that passes only because of its `paths` proves less than
+it looks: add the missing words to the claim's topics.
+
+Then route one prompt that has nothing to do with the claim. It should not
+come back. In a small ledger most sentences share a word with most claims, so
+the first check passes for almost anything; the unrelated prompt is the one
+that shows whether the claim's words are selective.
 
 ## State, and changing it
 
@@ -246,7 +265,8 @@ never be violated, `verified` when a command or test proves it.
 
 Every state change appends to `history`, and **the last history entry's `to`
 must equal the claim's `state`** — validation checks this. Each entry needs
-`from`, `to`, `at`, `actor`, `source`; `note` and `evidence` are optional.
+`from`, `to`, `at`, `actor`, `source`; `note` and `evidence` are optional. The
+first entry has `"from": null` and may enter at any state.
 
 ### supersede — the claim was right, then reality moved
 
@@ -261,8 +281,8 @@ one to `superseded`:
 Then append to the old claim's history:
 
 ```json
-{ "from": "enforced", "to": "superseded", "at": "2026-08-11T21:00:00-03:00",
-  "actor": "session", "source": "HANDOFF-2026-08-11-context-ledger.md",
+{ "from": "enforced", "to": "superseded", "at": "2026-03-20T00:00:00Z",
+  "actor": "session", "source": "HANDOFF-2026-03-20.md",
   "note": "the accepted claim set outgrew the budget" }
 ```
 
@@ -274,6 +294,18 @@ Move the claim to `contested` and say why in the history `note`. Contested
 claims still route, and score **+3** so they surface more readily — the point is
 to get the disagreement in front of the next session rather than to hide the
 claim. Bring it to the operator; resolving it is a ruling, not a cleanup.
+
+### an open question — nobody has decided yet
+
+Record it, so an agent does not settle it by accident: `"kind": "conflict"`,
+`"state": "contested"`, and a statement that says what is undecided and what
+to do in the meantime. It routes on every prompt until it is closed.
+
+When the operator rules, do not rewrite the question into the answer. Write
+the ruling as a new claim (`intent` or `invariant`, `authority.kind` `user`)
+with a `supersedes` relationship to the question, and move the question to
+`superseded` with a history entry. Point any scenario that expected the
+question at the ruling.
 
 ## The gates — always run these
 
@@ -290,7 +322,8 @@ node src/cli.mjs build-index     # regenerate the views; --check verifies instea
   reflex.** Every point of budget is paid on every prompt.
 - `history-state` — the last history entry disagrees with `state`.
 - `lifecycle` — an illegal transition; check the table above.
-- `single-value-conflict` — two active claims share a `singleValueKey`.
+- `single-value-conflict` — two active claims share a `singleValueKey` and one
+  of them is `enforced`.
 - `broken-scenario-reference` — a scenario names a claim id that does not exist.
 
 Then, if and only if the ledger is committed in this project, stage
@@ -319,15 +352,17 @@ Read the result for three things the tools will not tell you:
 
 ## Watch for
 
-**The hook fails open and silent by design.** A broken install is
-indistinguishable from "nothing matched". If a project's claims stop appearing,
-check that `tools/context-ledger/node_modules` exists — `ajv` missing is the
-common cause, and nothing will tell you.
+**The hook fails open and silent by design.** A broken hook prints nothing; a
+working one with no matching claim prints only the pack's heading line. Neither
+is visible unless you look. If a project's claims stop appearing, run
+`node src/cli.mjs validate`: malformed JSON in `context/` silences the hook,
+and nothing will tell you. The hook itself needs no installed packages;
+the CLI does, and fails loudly without `tools/context-ledger/node_modules`.
 
 **`build-index --check` compares bytes.** On Windows with `core.autocrlf`, git
 materialises LF-written files as CRLF and the check reports drift on identical
-content. Both committed ledgers pin their paths `text eol=lf` in
-`.gitattributes`; if a new project reports impossible drift, that is the cause.
+content. Pin the ledger's paths `text eol=lf` in `.gitattributes`; if a new
+project reports impossible drift, that is the cause.
 
 **Generated views are derived.** Never hand-edit `context/generated/` or a
 generated `AGENTS.md` — `build-index` overwrites them. The `AGENTS.md` view is

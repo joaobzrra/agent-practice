@@ -1,0 +1,13 @@
+[
+  {
+    "id": "DOC-readme",
+    "path": "README.md",
+    "title": "The ledger, worked through once",
+    "kind": "readme",
+    "state": "current",
+    "authorityRank": 40,
+    "stateAsOf": "2026-11-12",
+    "topics": ["ledger", "example"],
+    "replaces": []
+  }
+]
