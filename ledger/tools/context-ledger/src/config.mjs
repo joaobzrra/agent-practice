@@ -9,9 +9,26 @@ const here = dirname(fileURLToPath(import.meta.url));
 // imported so this module stays the root of the dependency graph.
 export const packageRoot = resolve(here, "../../..");
 
+// How strictly a prompt's words choose claims. The defaults are the rule the
+// tool has always had: one word the claim is about, or two from its text.
+// A ledger read in long, conversational prompts can ask for more. See
+// scoreClaim and routeContext in ledger.mjs.
+export const defaultMatching = Object.freeze({ minScore: 4, topicWord: false, detailWords: true, perPrompt: null });
+
+function matchingOf(value) {
+  const given = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const whole = (number, least) => Number.isInteger(number) && number >= least;
+  return {
+    minScore: whole(given.minScore, defaultMatching.minScore) ? given.minScore : defaultMatching.minScore,
+    topicWord: given.topicWord === true,
+    detailWords: given.detailWords !== false,
+    perPrompt: whole(given.perPrompt, 1) ? given.perPrompt : null
+  };
+}
+
 function fallback(root) {
   const name = basename(root);
-  return { repository: name.toLowerCase(), displayName: name, appliesTo: [], ignoreWords: [] };
+  return { repository: name.toLowerCase(), displayName: name, appliesTo: [], ignoreWords: [], matching: { ...defaultMatching } };
 }
 
 /**
@@ -37,7 +54,8 @@ export function loadConfig(root = packageRoot) {
       appliesTo: list(parsed.appliesTo),
       // Words dropped from every prompt before claims are matched. See
       // routeContext in ledger.mjs.
-      ignoreWords: list(parsed.ignoreWords)
+      ignoreWords: list(parsed.ignoreWords),
+      matching: matchingOf(parsed.matching)
     };
   } catch {
     return base;

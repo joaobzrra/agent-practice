@@ -17,7 +17,17 @@ test("reads repository and displayName from the config file", () => {
   const root = scratch(JSON.stringify({ repository: "tablebook", displayName: "Tablebook" }));
   // appliesTo was added with shared ledgers; a config without it serves
   // every project its hook is registered for.
-  assert.deepEqual(loadConfig(root), { repository: "tablebook", displayName: "Tablebook", appliesTo: [], ignoreWords: [] });
+  assert.deepEqual(loadConfig(root), { repository: "tablebook", displayName: "Tablebook", appliesTo: [], ignoreWords: [], matching: { minScore: 4, topicWord: false, detailWords: true, perPrompt: null } });
+});
+
+test("matching takes what is valid and keeps the default for the rest", () => {
+  const read = matching => loadConfig(scratch(JSON.stringify({ matching }))).matching;
+  assert.deepEqual(read({ minScore: 8, topicWord: true, detailWords: false, perPrompt: 5 }), { minScore: 8, topicWord: true, detailWords: false, perPrompt: 5 });
+  // A floor under the tool's own, a fraction, a word for a number, zero
+  // claims per prompt: none of them can make matching looser or silent.
+  assert.deepEqual(read({ minScore: 2, topicWord: "yes", detailWords: 0, perPrompt: 0 }), { minScore: 4, topicWord: false, detailWords: true, perPrompt: null });
+  assert.deepEqual(read({ minScore: 7.5, perPrompt: "5" }), { minScore: 4, topicWord: false, detailWords: true, perPrompt: null });
+  assert.deepEqual(read("strict"), { minScore: 4, topicWord: false, detailWords: true, perPrompt: null });
 });
 
 test("ignoreWords is a list of words, and anything else is no list", () => {

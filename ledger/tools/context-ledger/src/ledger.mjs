@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadConfig } from "./config.mjs";
+import { defaultMatching, loadConfig } from "./config.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, "../../..");
@@ -426,22 +426,36 @@ export const severityRank = new Map([["critical", 3], ["high", 2], ["medium", 1]
 //
 // `match` is the part of the score that came from the prompt or the paths;
 // a contested claim gets 3 on top so that an open question is never missed.
-const matchFloor = 4;
+//
+// That floor suits a prompt that states a task. A long, conversational
+// prompt holds a hundred ordinary words, and against a ledger of a hundred
+// claims half of them reach 4 through "need", "like" or "client". A ledger
+// can ask for more in its config (`matching`): a higher floor (`minScore`),
+// at least one word the claim is about (`topicWord`), no credit for words
+// that are only in `detail` (`detailWords: false`), and a limit on how many
+// claims a prompt's words may choose (`perPrompt`, applied in routeContext).
+// A path is never subject to any of them.
+const matchFloor = defaultMatching.minScore;
 
-function scoreClaim(claim, promptTokens, pathValues, mentions) {
-  let match = 0;
+function scoreClaim(claim, promptTokens, pathValues, mentions, matching = defaultMatching) {
+  let words = 0;
+  let aboutHits = 0;
   const about = tokens([...claim.scope.topics, ...claim.scope.entities, claim.title].join(" "));
-  for (const token of about) if (promptTokens.has(token)) match += 4;
-  // `detail` is never sent, and its words still count like the statement's.
-  // A statement shortened by moving its evidence into `detail` is found by
-  // every prompt that found it before.
-  for (const token of tokens(`${claim.statement} ${claim.detail ?? ""}`)) if (!about.has(token) && promptTokens.has(token)) match += 2;
+  for (const token of about) if (promptTokens.has(token)) { words += 4; aboutHits += 1; }
+  // `detail` is never sent, and its words still count like the statement's
+  // unless the ledger says otherwise. A statement shortened by moving its
+  // evidence into `detail` is found by every prompt that found it before.
+  const prose = matching.detailWords ? `${claim.statement} ${claim.detail ?? ""}` : claim.statement;
+  for (const token of tokens(prose)) if (!about.has(token) && promptTokens.has(token)) words += 2;
+  if (matching.topicWord && !aboutHits) words = 0;
+  let byPath = 0;
   for (const claimPath of claim.scope.paths.map(comparablePath)) {
-    for (const inputPath of pathValues) if (under(inputPath, claimPath) || under(claimPath, inputPath)) match += 12;
-    if (mentions.some(mention => mentionHits(mention, claimPath))) match += 12;
+    for (const inputPath of pathValues) if (under(inputPath, claimPath) || under(claimPath, inputPath)) byPath += 12;
+    if (mentions.some(mention => mentionHits(mention, claimPath))) byPath += 12;
   }
-  if (match < matchFloor) match = 0;
-  return { match, score: match + (claim.state === "contested" ? 3 : 0) };
+  let match = words + byPath;
+  if (match < Math.max(matchFloor, matching.minScore)) match = byPath;
+  return { match, score: match + (claim.state === "contested" ? 3 : 0), byPath: byPath > 0 };
 }
 
 // conflictsWith is undirected for routing: a session must never see only one
@@ -494,14 +508,28 @@ export function conflictComponents(claims) {
 // game lessons. They are dropped from the prompt like filler words, so a
 // claim is not chosen because its title happens to hold one. The ledger's
 // config lists them (`ignoreWords`).
-export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free = [], root = repoRoot, ignore = [] } = {}) {
+//
+// `matching` is the ledger's `matching` config (see scoreClaim). With
+// `perPrompt` set, only that many of the claims a prompt's words chose are
+// kept, the best first; the rest are not routed at all, not even as a title.
+// The limit is counted before `free`, so a later prompt on the same subject
+// gets the same few claims again (as a pointer) instead of working its way
+// down to weaker and weaker matches. Claims matched by a path, and standing
+// claims, are outside it.
+export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free = [], root = repoRoot, ignore = [], matching = defaultMatching } = {}) {
+  const rule = { ...defaultMatching, ...matching };
   const ignored = tokens(ignore.join(" "));
   const promptTokens = new Set([...tokens(prompt)].filter(token => !ignored.has(token)));
   const normalizedPaths = paths.map(comparablePath).filter(Boolean);
   const mentions = mentionedPaths(prompt, root);
   const uncounted = new Set(free);
   const eligible = ledger.claims.filter(claim => activeStates.has(claim.state));
-  const scores = new Map(eligible.map(claim => [claim.id, scoreClaim(claim, promptTokens, normalizedPaths, mentions)]));
+  const scores = new Map(eligible.map(claim => [claim.id, scoreClaim(claim, promptTokens, normalizedPaths, mentions, rule)]));
+  if (rule.perPrompt) {
+    const byWords = eligible.filter(claim => scores.get(claim.id).match > 0 && !scores.get(claim.id).byPath)
+      .sort((a, b) => scores.get(b.id).match - scores.get(a.id).match || (a.id < b.id ? -1 : 1));
+    for (const claim of byWords.slice(rule.perPrompt)) scores.set(claim.id, { match: 0, score: claim.state === "contested" ? 3 : 0, byPath: false });
+  }
   const components = conflictComponents(eligible).map(members => ({
     members,
     mandatory: members.some(member => member.universal),

@@ -8,7 +8,7 @@ import { buildHookOutput } from "./hook.mjs";
 import { loadLedger, renderPack, routeContext, stableJson } from "./ledger.mjs";
 
 const ledger = loadLedger();
-const ignore = loadConfig().ignoreWords;
+const { ignoreWords: ignore, matching } = loadConfig();
 const critical = new Set(ledger.claims.filter(claim => claim.universal && claim.severity === "critical" && ["accepted", "verified", "enforced", "contested"].includes(claim.state)).map(claim => claim.id));
 const routeMs = [];
 const failures = [];
@@ -20,7 +20,7 @@ const titleOnly = [];
 
 for (const scenario of ledger.scenarios) {
   const started = performance.now();
-  const pack = routeContext(ledger, { prompt: scenario.prompt, paths: scenario.paths, ignore });
+  const pack = routeContext(ledger, { prompt: scenario.prompt, paths: scenario.paths, ignore, matching });
   routeMs.push(performance.now() - started);
   const returned = [...pack.bindingInvariants, ...pack.currentVerifiedFacts, ...pack.acceptedIntent, ...pack.openConflicts];
   const ids = new Set(returned.map(claim => claim.id));

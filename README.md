@@ -76,7 +76,7 @@ So the system is built on one idea:
 | **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
-| **`ledger/`** | The decision ledger as a tool you can copy into a project: a CLI, a hook, three schemas and 117 tests, set inside an invented example project with real output. Needs Node 24 and two packages. |
+| **`ledger/`** | The decision ledger as a tool you can copy into a project: a CLI, a hook, three schemas and 121 tests, set inside an invented example project with real output. Needs Node 24 and two packages. |
 | **`library/`** | A starter cross-project knowledge library: the index builder with its tests, a document template, and six example entries. |
 | **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it and a first CI run that found a fifth. |
 
@@ -227,8 +227,8 @@ has the steps to copy it into your own project, and its limits.
 
 ```console
 $ cd ledger/tools/context-ledger && npm ci && npm test
-ℹ tests 117
-ℹ pass 117
+ℹ tests 121
+ℹ pass 121
 ℹ fail 0
 ```
 

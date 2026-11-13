@@ -288,7 +288,7 @@ export function buildHookOutput(event, input, { root = defaultRoot, stateRoot = 
         : { known: recorded([], rendered.pack, rendered.full) })];
     } else if (event === "UserPromptSubmit") {
       const talk = conversation(ledger, readState(mainPath).known);
-      const pack = routeContext(ledger, { prompt: String(input.prompt ?? ""), limit: routingBudget, free: talk.held, root: ground, ignore: config.ignoreWords });
+      const pack = routeContext(ledger, { prompt: String(input.prompt ?? ""), limit: routingBudget, free: talk.held, root: ground, ignore: config.ignoreWords, matching: config.matching });
       const notice = withdrawal(ledger, talk.withdrawn);
       const rendered = renderPack(pack, { displayName, known: talk.held, changed: talk.changed, budget: packCharBudget - notice.length, expand });
       context = rendered.text ? `${rendered.text}${notice}` : notice ? `# ${displayName} routed context\n${notice}` : "";

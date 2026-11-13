@@ -355,6 +355,59 @@ test("a word the ledger ignores does not choose a claim, wherever the claim hold
   assert.deepEqual(route("cooking the game", ["game"]), ["CLM-topic"]);
 });
 
+test("a ledger can ask a prompt for more than one shared word", () => {
+  // A long, conversational prompt holds a hundred ordinary words. Under the
+  // default rule each of them that sits in a title is a match.
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-one-topic", title: "Client view resets", statement: "Fixture." }),
+      claim({ id: "CLM-two-topics", title: "Lobby door", scope: { topics: ["client", "lobby"], paths: [], entities: [] }, statement: "Fixture." }),
+      claim({ id: "CLM-topic-and-prose", title: "Lobby door", statement: "The client is moved before the travel ends." }),
+      claim({ id: "CLM-prose-only", title: "Unrelated", statement: "The client is moved before the travel ends and the door closes." }),
+      claim({ id: "CLM-detail-only", title: "Unrelated", statement: "Fixture.", detail: "Seen when the client came into the lobby before the travel ends and the door closes." }),
+      claim({ id: "CLM-by-path", title: "Unrelated", statement: "Fixture.", scope: { topics: [], paths: ["Config/Game.ini"], entities: [] } })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const prompt = "the client is stuck in the lobby before the travel ends and the door closes";
+  const route = (matching, extra = {}) => [...idsFrom(routeContext(fixture, { prompt, matching, ...extra }))].sort();
+
+  assert.deepEqual(route(undefined), ["CLM-detail-only", "CLM-one-topic", "CLM-prose-only", "CLM-topic-and-prose", "CLM-two-topics"], "the default: one title word, or two words of the text");
+  assert.deepEqual(route({ minScore: 8 }), ["CLM-detail-only", "CLM-prose-only", "CLM-topic-and-prose", "CLM-two-topics"], "a higher floor drops the claim with one shared title word");
+  assert.deepEqual(route({ minScore: 8, topicWord: true }), ["CLM-topic-and-prose", "CLM-two-topics"], "and with topicWord, words of the text add to a score and cannot choose a claim alone");
+  assert.deepEqual(route({ detailWords: false }), ["CLM-one-topic", "CLM-prose-only", "CLM-topic-and-prose", "CLM-two-topics"], "detailWords: false stops words that are only in the detail from counting");
+  assert.deepEqual(route({ minScore: 8, topicWord: true, detailWords: false }, { paths: ["Config/Game.ini"] }), ["CLM-by-path", "CLM-topic-and-prose", "CLM-two-topics"], "a path is never subject to any of it");
+  assert.deepEqual(route({ minScore: 40 }, { paths: ["Config/Game.ini"] }), ["CLM-by-path"], "not even to a floor above what a path scores");
+});
+
+test("a ledger can limit how many claims a prompt's words choose", () => {
+  const fixture = {
+    claims: [
+      claim({ id: "CLM-best", title: "Lobby door client", statement: "Fixture." }),
+      claim({ id: "CLM-second", title: "Lobby door", statement: "Fixture." }),
+      claim({ id: "CLM-third", title: "Lobby", statement: "Fixture." }),
+      claim({ id: "CLM-fourth", title: "Door", statement: "Fixture." }),
+      claim({ id: "CLM-by-path", title: "Unrelated", statement: "Fixture.", scope: { topics: [], paths: ["Config/Game.ini"], entities: [] } }),
+      claim({ id: "CLM-open-question", title: "Unrelated question", statement: "Fixture.", state: "contested" }),
+      claim({ id: "CLM-open-door-question", title: "Door question", statement: "Fixture.", state: "contested" })
+    ],
+    documents: [],
+    scenarios: []
+  };
+  const prompt = "the client is stuck at the lobby door";
+  const route = options => routeContext(fixture, { prompt, matching: { perPrompt: 2 }, ...options });
+
+  assert.deepEqual(route().matched, ["CLM-best", "CLM-second"], "the two best matches, and the rest are not routed");
+  assert.deepEqual(route().cut, [], "nor named by title");
+  assert.ok(idsFrom(route()).has("CLM-open-question"), "an open question still stands");
+  assert.ok(idsFrom(route()).has("CLM-open-door-question"), "and so does one whose match was past the limit: it is contested, whatever the prompt says");
+  assert.equal(idsFrom(route()).has("CLM-third"), false);
+  assert.deepEqual(route({ paths: ["Config/Game.ini"] }).matched, ["CLM-best", "CLM-by-path", "CLM-second"], "a claim matched by a path comes on top of the limit");
+  assert.deepEqual(route({ free: ["CLM-best", "CLM-second"] }).matched, ["CLM-best", "CLM-second"], "claims the conversation already holds still take their places, so the next prompt does not reach further down");
+  assert.deepEqual(routeContext(fixture, { prompt }).matched, ["CLM-best", "CLM-fourth", "CLM-open-door-question", "CLM-second", "CLM-third"], "without the setting, every claim that shares a word");
+});
+
 test("a path matches at a folder boundary, not in the middle of a name", () => {
   const fixture = {
     claims: [claim({ id: "CLM-app", scope: { topics: ["zzzz"], paths: ["src/app"], entities: [] } })],

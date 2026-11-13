@@ -121,7 +121,9 @@ Three things differ in a shared ledger:
   the stack defines).
 - The ledger may list `ignoreWords` in its config: words every claim shares,
   dropped from every prompt. A topic that is on that list finds nothing.
-  Read the list before choosing topics.
+  Read the list before choosing topics. It is usually strict as well
+  (`matching`, under "Making sure it will actually be found"): it is read in
+  sessions about something else, where a loose match is noise.
 
 A shared ledger that is a git repository is separate from the project's: a
 commit in the project does not cover it. Stage the claim there and commit it
@@ -262,6 +264,16 @@ the claim was worth writing.
     score 0                           -> not retrieved, unless the claim is
                                            universal or shares a conflictsWith
                                            component with a claim that is
+
+**A ledger may be stricter than this table.** Read `matching` in its
+`context/ledger.config.json` before choosing topics. With `"minScore": 8`,
+one topic word is not a match: the claim needs two words a prompt would use
+in its title, topics or entities. With `"topicWord": true`, words in the
+statement cannot find the claim alone. With `"detailWords": false`, words in
+`detail` find nothing. With `"perPrompt": 5`, a prompt gets its five best
+claims and no more, so a claim must outscore its neighbours on its own
+prompt. `route` and `evaluate.mjs` apply the same setting, so the checks
+under "Prove it" tell you the truth either way.
 
 A word counts once however many times it appears: a word in both the title and
 the topics is one +4, and a word in the title and the statement is +4, not +6.

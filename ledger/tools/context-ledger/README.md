@@ -451,6 +451,49 @@ statements are given the room in a message. In a session, the claims a
 conversation already holds do not count toward the 24, so a ledger with many
 universal claims still has room for what a prompt or a file brings.
 
+### Long prompts: asking for more than one shared word
+
+The rule above suits a prompt that states a task. A long, conversational
+prompt (a list of bugs from a play session, a pasted message) holds a hundred
+ordinary words, and "need", "like" or "client" each sit in some claim's title.
+Seen on a ledger of about a hundred claims: such prompts matched half the
+ledger, every one filled the whole message, and none of what was sent was
+used.
+
+A ledger can ask for more, in `context/ledger.config.json`:
+
+```json
+"matching": { "minScore": 8, "topicWord": true, "detailWords": false, "perPrompt": 5 }
+```
+
+- `minScore`: the least total that counts as a match. The default is 4, and a
+  smaller number is ignored. 8 means two words the claim is about, or one of
+  them and two from its statement.
+- `topicWord`: when `true`, at least one shared word must be in the claim's
+  title, topics or entities. Words of the statement add to the score and
+  cannot choose a claim alone.
+- `detailWords`: when `false`, a word found only in `detail` adds nothing.
+  Leave it `true` in a ledger whose `detail` holds old statements, so that
+  every prompt that found a claim before still does. Turn it off where
+  `detail` holds long quoted sources, whose vocabulary is not the claim's.
+- `perPrompt`: the most claims a prompt's words may choose, best score first.
+  The rest are not sent, not even as a title. Claims the conversation already
+  holds keep their places in that count, so a second prompt on the same
+  subject gets a pointer to the same few claims, not the next few down.
+
+None of the four applies to a claim matched by a path, to universal claims or
+to contested ones. `route`, the hook and `evaluate.mjs` all read the setting.
+
+After changing it, run `node src/evaluate.mjs`. A scenario that fails now has
+a claim that depended on one shared word: give the claim the topic words its
+prompt uses, as in "Prove it" in the skill. On the ledger above, about one
+scenario in eight failed under the setting shown and passed again with topic
+words added; the same long prompts then drew at most 5 claims each, where
+they had drawn between a sixth and a half of the ledger.
+
+This is still word matching. A stricter rule sends less that is irrelevant;
+it does not make what is sent relevant.
+
 ## Limits you should know before relying on it
 
 All of these were checked against the code or by running it.
@@ -512,7 +555,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-117 tests. They build an invented project in a temp folder
+121 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

@@ -609,6 +609,16 @@ test("the hook drops the ledger's ignored words from a prompt", () => {
   assert.equal(says("ignore-after", "the reminder").includes("records that it sent before it queues"), false, "the only word that matched is one the ledger ignores");
 });
 
+test("the hook applies the ledger's matching rule to a prompt", () => {
+  const own = makeProject();
+  const stateRoot = tempDir("ledger-delivery-");
+  const says = (session, prompt) => context(buildHookOutput("UserPromptSubmit", { session_id: session, prompt }, { root: own.root, stateRoot }));
+  assert.match(says("strict-before", "the reminder"), /records that it sent before it queues/, "one topic word is enough by default");
+  writeFileSync(join(own.root, "context", "ledger.config.json"), JSON.stringify({ ...fixtureConfig, matching: { minScore: 8 } }), "utf8");
+  assert.equal(says("strict-after", "the reminder").includes("records that it sent before it queues"), false, "and not under a floor of 8");
+  assert.match(says("strict-two", "the reminder email"), /records that it sent before it queues/, "two topic words are");
+});
+
 test("a message fits even when ids alone would fill it", () => {
   // The schema puts no limit on the length of an id, and the lines that name
   // claims by id are not built claim by claim.
