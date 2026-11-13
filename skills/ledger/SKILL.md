@@ -269,15 +269,23 @@ the claim was worth writing.
 `context/ledger.config.json` before choosing topics. With `"minScore": 8`,
 one topic word is not a match: a prompt must reach 8, with two words from
 the claim's title, topics or entities (4 + 4), with one of those and two
-from its statement (4 + 2 + 2), or with four from its statement. Aim for two
-topic words; do not count on the statement. With `"topicWord": true`, at least one shared word must be in the
+from its statement (4 + 2 + 2), or with four from its statement when
+`topicWord` is not set. Aim for two topic words; do not count on the
+statement. With `"topicWord": true`, at least one shared word must be in the
 title, the topics or the entities: words in the statement add to the score
-and cannot find the claim alone. With `"detailWords": false`, words in
-`detail` find nothing. With `"perPrompt": 5`, a prompt gets its five best
-claims and no more, so a claim must outscore its neighbours on its own
-prompt. (Universal and contested claims, claims matched by a path, and the
-other side of a `conflictsWith` pair come on top of the five.) `route` and `evaluate.mjs` apply the same setting, so the checks
-under "Prove it" tell you the truth either way.
+and cannot find the claim alone, however many there are. With
+`"detailWords": false`, words in `detail` add nothing, and what this skill
+says elsewhere about `detail` being matched like the statement does not hold
+in that ledger. With `"perPrompt": 5`, a prompt gets its five best claims
+and no more: the sixth is dropped, not listed by title, so a claim must
+outscore its neighbours on its own prompt.
+
+The four settings decide only which claims a prompt's words choose.
+Universal claims, contested claims (their +3 is still enough with no match),
+claims matched by a path, and the other side of a `conflictsWith` pair
+arrive as described below and come on top of the five. `route` and
+`evaluate.mjs` apply the same setting, so the checks under "Prove it" tell
+you the truth either way.
 
 A word counts once however many times it appears: a word in both the title and
 the topics is one +4, and a word in the title and the statement is +4, not +6.
