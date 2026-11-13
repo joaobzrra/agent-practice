@@ -514,8 +514,10 @@ export function conflictComponents(claims) {
 // kept, the best first; the rest are not routed at all, not even as a title.
 // The limit is counted before `free`, so a later prompt on the same subject
 // gets the same few claims again (as a pointer) instead of working its way
-// down to weaker and weaker matches. Claims matched by a path, and standing
-// claims, are outside it.
+// down to weaker and weaker matches. Claims matched by a path, and universal
+// and contested claims, are outside it and take none of its places. A claim
+// past the limit still arrives when `conflictsWith` ties it to one that was
+// kept: both sides of a contradiction come together or not at all.
 export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free = [], root = repoRoot, ignore = [], matching = defaultMatching } = {}) {
   const rule = { ...defaultMatching, ...matching };
   const ignored = tokens(ignore.join(" "));
@@ -526,9 +528,12 @@ export function routeContext(ledger, { prompt = "", paths = [], limit = 24, free
   const eligible = ledger.claims.filter(claim => activeStates.has(claim.state));
   const scores = new Map(eligible.map(claim => [claim.id, scoreClaim(claim, promptTokens, normalizedPaths, mentions, rule)]));
   if (rule.perPrompt) {
-    const byWords = eligible.filter(claim => scores.get(claim.id).match > 0 && !scores.get(claim.id).byPath)
+    // A universal or contested claim arrives whatever the prompt says, so it
+    // takes no place here: otherwise five standing claims whose titles hold
+    // common words would leave a prompt with nothing of its own.
+    const byWords = eligible.filter(claim => scores.get(claim.id).match > 0 && !scores.get(claim.id).byPath && !claim.universal && claim.state !== "contested")
       .sort((a, b) => scores.get(b.id).match - scores.get(a.id).match || (a.id < b.id ? -1 : 1));
-    for (const claim of byWords.slice(rule.perPrompt)) scores.set(claim.id, { match: 0, score: claim.state === "contested" ? 3 : 0, byPath: false });
+    for (const claim of byWords.slice(rule.perPrompt)) scores.set(claim.id, { match: 0, score: 0, byPath: false });
   }
   const components = conflictComponents(eligible).map(members => ({
     members,

@@ -454,7 +454,7 @@ universal claims still has room for what a prompt or a file brings.
 ### Long prompts: asking for more than one shared word
 
 The rule above suits a prompt that states a task. A long, conversational
-prompt (a list of bugs from a play session, a pasted message) holds a hundred
+prompt (a list of problems written up after a test, a pasted message) holds a hundred
 ordinary words, and "need", "like" or "client" each sit in some claim's title.
 Seen on a ledger of about a hundred claims: such prompts matched half the
 ledger, every one filled the whole message, and none of what was sent was
@@ -467,8 +467,9 @@ A ledger can ask for more, in `context/ledger.config.json`:
 ```
 
 - `minScore`: the least total that counts as a match. The default is 4, and a
-  smaller number is ignored. 8 means two words the claim is about, or one of
-  them and two from its statement.
+  smaller number is ignored. 8 is reached by two words the claim is about, by
+  one of them and two from its statement, or by four from its statement
+  (which `topicWord` rules out).
 - `topicWord`: when `true`, at least one shared word must be in the claim's
   title, topics or entities. Words of the statement add to the score and
   cannot choose a claim alone.
@@ -479,10 +480,15 @@ A ledger can ask for more, in `context/ledger.config.json`:
 - `perPrompt`: the most claims a prompt's words may choose, best score first.
   The rest are not sent, not even as a title. Claims the conversation already
   holds keep their places in that count, so a second prompt on the same
-  subject gets a pointer to the same few claims, not the next few down.
+  subject gets a pointer to the same few claims, not the next few down. One
+  exception: a claim past the limit still arrives when `conflictsWith` ties
+  it to a claim that was kept, because a contradiction is never sent by
+  halves.
 
-None of the four applies to a claim matched by a path, to universal claims or
-to contested ones. `route`, the hook and `evaluate.mjs` all read the setting.
+A claim matched by a path, a universal claim and a contested claim arrive as
+they always did: none of the four can remove one, and none of them takes one
+of the `perPrompt` places. `route`, the hook and `evaluate.mjs` all read the
+setting.
 
 After changing it, run `node src/evaluate.mjs`. A scenario that fails now has
 a claim that depended on one shared word: give the claim the topic words its
@@ -555,7 +561,7 @@ All of these were checked against the code or by running it.
 npm test
 ```
 
-121 tests. They build an invented project in a temp folder
+122 tests. They build an invented project in a temp folder
 ([`fixtures/project.mjs`](fixtures/project.mjs)) and run against that, so they
 pass wherever this folder is copied. One test compares `templates/schemas`
 with your project's `context/schemas` and is skipped until `init` has run.

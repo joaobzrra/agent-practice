@@ -267,12 +267,16 @@ the claim was worth writing.
 
 **A ledger may be stricter than this table.** Read `matching` in its
 `context/ledger.config.json` before choosing topics. With `"minScore": 8`,
-one topic word is not a match: the claim needs two words a prompt would use
-in its title, topics or entities. With `"topicWord": true`, words in the
-statement cannot find the claim alone. With `"detailWords": false`, words in
+one topic word is not a match: a prompt must reach 8, with two words from
+the claim's title, topics or entities (4 + 4), with one of those and two
+from its statement (4 + 2 + 2), or with four from its statement. Aim for two
+topic words; do not count on the statement. With `"topicWord": true`, at least one shared word must be in the
+title, the topics or the entities: words in the statement add to the score
+and cannot find the claim alone. With `"detailWords": false`, words in
 `detail` find nothing. With `"perPrompt": 5`, a prompt gets its five best
 claims and no more, so a claim must outscore its neighbours on its own
-prompt. `route` and `evaluate.mjs` apply the same setting, so the checks
+prompt. (Universal and contested claims, claims matched by a path, and the
+other side of a `conflictsWith` pair come on top of the five.) `route` and `evaluate.mjs` apply the same setting, so the checks
 under "Prove it" tell you the truth either way.
 
 A word counts once however many times it appears: a word in both the title and
@@ -326,9 +330,10 @@ universal claims.
 Five rules follow, in order of how much they matter:
 
 1. **Put the words a prompt will use in `title` and `topics`.** One word there
-   is a match. One word that appears only in the statement is not: it takes
+   is a match (two in a ledger whose config sets `"minScore": 8`, see
+   above). One word that appears only in the statement is not: it takes
    two different words. List the singular and the plural, since `reminders` does not match
-   `reminder`.
+   `reminder`, and the verb forms a prompt would use (`emit`, `emitting`).
 2. **Scope a claim about files with `scope.paths`, and give it words too.** A
    path is the strongest match there is, and it fires when the agent opens the
    file. That can be after a prompt has already set the direction, and it does
