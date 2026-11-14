@@ -1,0 +1,125 @@
+{
+  "_comment": "Copy to characters/<slug>/spec.json. Fields the user did not state keep these defaults; say so in the report.",
+  "name": "Courier",
+  "slug": "courier",
+  "references": [
+    "characters/courier/ref/front.png"
+  ],
+  "_references_note": "References for the BASE (body + fused clothing). First image is the front view (required). Add side/back views to reduce hallucinated backs; max 4.",
+  "style": "stylized",
+  "role": "npc",
+  "height_meters": 1.75,
+  "triangle_budget": 15000,
+  "must_have": [
+    "yellow hooded raincoat with snap buttons",
+    "grey cargo trousers",
+    "brown lace-up work boots"
+  ],
+  "_must_have_note": "Only what the BASE must show. Anything listed in parts is checked there instead.",
+  "generation": {
+    "provider": "meshy",
+    "ai_model": "latest",
+    "pose_mode": "a-pose",
+    "topology": "triangle",
+    "texture_resolution": "2k",
+    "enable_pbr": true,
+    "image_enhancement": true,
+    "geometry_resolution": "standard",
+    "texture_prompt": "no glasses, no hat, no drawstrings; plain raincoat collar"
+  },
+  "_model_type_note": "Optional generation.model_type: standard (default: meshy-7.1, remeshed to triangle_budget) or smart-topology (ai_model meshy-t2 up to 15000 faces or meshy-t2.5 up to 30000; native low-poly, one reference only, 15 credits with texture; the driver drops image_enhancement, which returns 400). Visibly lower detail than meshy-7.1 in a side-by-side test: use it only when the user asks for it.",
+  "_generation_note": "provider meshy|tripo|rodin (only meshy has a driver backend today; tripo/rodin backends are built from their docs when chosen). pose_mode a-pose|t-pose|''. topology triangle|quad (quad for hero close-ups). texture_resolution 2k|4k|8k. geometry_resolution standard|2k|4k (4k single-image only, +5 credits). texture_prompt max 800 chars; use it to keep modular pieces OFF the base and to name a material Meshy misread.",
+  "parts": [
+    {
+      "name": "glasses",
+      "source": "procedural",
+      "generator": "glasses",
+      "params": {
+        "lens_radius": 0.021,
+        "rim_thickness": 0.0025,
+        "pupil_distance": 0.064,
+        "temple_length": 0.12,
+        "color": [
+          0.02,
+          0.02,
+          0.02
+        ]
+      },
+      "attach": {
+        "mode": "rigid",
+        "landmark": "eyes",
+        "offset_m": [
+          0,
+          -0.004,
+          0
+        ]
+      },
+      "triangle_budget": 1500
+    },
+    {
+      "name": "drawstrings",
+      "source": "procedural",
+      "generator": "drawstrings",
+      "params": {
+        "length": 0.16,
+        "spacing": 0.05,
+        "cord_radius": 0.004,
+        "color": [
+          0.92,
+          0.88,
+          0.78
+        ]
+      },
+      "attach": {
+        "mode": "deform",
+        "landmark": "chest",
+        "offset_m": [
+          0,
+          -0.006,
+          0.06
+        ]
+      },
+      "triangle_budget": 1200
+    },
+    {
+      "name": "bucket_hat",
+      "source": "meshy",
+      "references": [
+        "characters/courier/ref/bucket_hat.png"
+      ],
+      "texture_prompt": "olive canvas bucket hat, no head inside, hollow",
+      "attach": {
+        "mode": "deform",
+        "landmark": "head_top",
+        "offset_m": [
+          0,
+          0,
+          -0.01
+        ]
+      },
+      "triangle_budget": 2000
+    }
+  ],
+  "_parts_note": "source: procedural (bpy generator in scripts/build_part.py: glasses|drawstrings), meshy (own references, generated with --part NAME), library (file: existing GLB). attach.mode: rigid (100% weight to one bone + socket in UE) or deform (weights copied from the base surface). landmark: eyes|chest|head_top|neck|waist (bone-based when bone names match, else height fraction) with a raycast to the base surface along -Y; offset_m is added after. Parts are built facing -Y at their own origin.",
+  "rig": {
+    "target": "ue5-manny",
+    "animations": [
+      "walking",
+      "running"
+    ],
+    "provider": "meshy",
+    "_note": "Meshy rigs any textured GLB via model_url, so the base may come from another provider."
+  },
+  "export": {
+    "modular": true,
+    "_note": "true: base SK + one FBX per deform part sharing the skeleton + static FBX per rigid part + sockets.json. false: everything merged into one skeletal FBX."
+  },
+  "budget": {
+    "max_generations": 3,
+    "max_fix_passes_per_candidate": 2
+  },
+  "naming": {
+    "mesh": "SK_Courier",
+    "material_prefix": "M_Courier_"
+  }
+}

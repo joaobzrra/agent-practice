@@ -73,7 +73,7 @@ So the system is built on one idea:
 | **`AGENTS.md`** | The working agreement. Every rule, and why it exists. `CLAUDE.md` is a one-line pointer to it. |
 | **`templates/`** | A fill-in skeleton for one project's own instruction file: commands, full CI, boundaries, deploy target. |
 | **`agents/`** | Four roles — `scout`, `researcher`, `implementer`, `reviewer` — each pinned to a model tier by the judgment its job requires. |
-| **`skills/`** | Thirteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, and a security audit (Cloudflare's, see below). |
+| **`skills/`** | Fifteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, a game-character planner and pipeline, and a security audit (Cloudflare's, see below). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
 | **`ledger/`** | The decision ledger as a tool you can copy into a project: a CLI, a hook, three schemas and 122 tests, set inside an invented example project with real output. Needs Node 24 and two packages. |
@@ -243,6 +243,25 @@ is stale.
 Its README includes what the author's own session logs show about which
 entries get opened. The short version: project briefs, often; individual
 traps, almost never, so the index line has to carry the whole point.
+
+## Game characters from a reference image
+
+`skills/3dmodel-planning` and `skills/game-character` turn a concept image
+into a rigged, modular character ready for Unreal Engine 5. The planning skill
+is an interview that runs first and spends nothing: it fixes the budgets, the
+camera, and which pieces are separate parts, and writes `brief.md` and
+`spec.json`. The pipeline skill then drives Meshy's API for the organic base
+mesh and the rig, builds hard-surface parts (glasses, hood drawstrings) in
+headless Blender, skins every part onto one skeleton, and exports FBX files
+with a report.
+
+The split behind it: image-to-3D generators are good at bodies and clothing
+and bad at anything thin or hard-edged. They paint skin inside a glasses lens
+and fuse cords to the chest. So those pieces are built in code, where a rim is
+a torus with exact topology, and the generator is told to leave them off.
+
+Each Blender script has a `--selftest` that runs without credits. It needs
+Blender 4.2 or newer, Python 3.10+, and a paid Meshy API key for real runs.
 
 ## Security audit
 
