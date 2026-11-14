@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: hero-two-views
+expected_outcome: |
+  spec.json lists the front reference first and the back second, topology quad,
+  texture_resolution 4k, triangle_budget 30000, height 1.82. The generate step uses the
+  multi-image endpoint. "idle" is not one of Meshy's free rig clips, so the run either
+  looks it up in the animation library (meshy_pipeline.py library) and uses animate with a
+  matching action id, or reports it as an open item. Report follows the template.
+context:
+  scaffold_script: place-files.sh

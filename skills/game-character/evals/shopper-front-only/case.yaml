@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: shopper-front-only
+expected_outcome: |
+  Writes characters/shopper/spec.json with must_have items for beanie, glasses and
+  drawstrings, triangle_budget 15000, height 1.75, one front reference. Runs the
+  Meshy generate script (or explains that MESHY_API_KEY/BLENDER_EXE are missing and
+  stops before spending credits). Evaluates with the Blender script, writes
+  eval/review.md with PASS/FIX/REGEN lines, applies a fix plan before rigging, rigs,
+  exports SK_Shopper.fbx, and ends with a report whose first block is "Waiting on you"
+  and which notes the back is generator-inferred because only a front view was given.
+context:
+  scaffold_script: place-files.sh

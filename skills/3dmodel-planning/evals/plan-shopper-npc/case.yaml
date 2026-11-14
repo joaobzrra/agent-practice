@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: plan-shopper-npc
+expected_outcome: |
+  Asks in batched structured questions with recommendations (not open prose), sorts the
+  visible elements into base / procedural / Meshy part / library, forces modular export
+  because skins are planned, picks NPC-tier budgets from budgets.md and cites them, and
+  writes brief.md, spec.json (game-character template shape, parts for glasses and
+  drawstrings, texture_prompt excluding them) and reference-brief.md with a front block
+  that says no glasses, no cords. Ends with the handoff line and does not generate anything.
+context:
+  scaffold_script: place-files.sh

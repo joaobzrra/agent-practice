@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: modular-glasses-drawstrings
+expected_outcome: |
+  spec.json has parts[] with glasses (source procedural, attach rigid, landmark eyes) and
+  drawstrings (source procedural, attach deform, landmark chest), both removed from the base
+  must_have list, and the base generation.texture_prompt says to leave glasses and cords
+  off. The run builds both parts with build_part.py, runs blender_assemble.py (landmarks
+  first), reads assembly_log.json weighted_fraction, and the report lists SK_Shopper.fbx plus
+  one SK_Shopper_<part>.fbx per part and the UE leader-pose instruction.
+context:
+  scaffold_script: place-files.sh

@@ -260,6 +260,10 @@ and bad at anything thin or hard-edged. They paint skin inside a glasses lens
 and fuse cords to the chest. So those pieces are built in code, where a rim is
 a torus with exact topology, and the generator is told to leave them off.
 
+Each skill also has an `evals/` folder: test prompts with graders and the
+input images, using a stylized shopper character from one of the author's
+games as the reference.
+
 Each Blender script has a `--selftest` that runs without credits. It needs
 Blender 4.2 or newer, Python 3.10+, and a paid Meshy API key for real runs.
 
