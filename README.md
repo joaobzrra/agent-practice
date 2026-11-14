@@ -73,12 +73,53 @@ So the system is built on one idea:
 | **`AGENTS.md`** | The working agreement. Every rule, and why it exists. `CLAUDE.md` is a one-line pointer to it. |
 | **`templates/`** | A fill-in skeleton for one project's own instruction file: commands, full CI, boundaries, deploy target. |
 | **`agents/`** | Four roles — `scout`, `researcher`, `implementer`, `reviewer` — each pinned to a model tier by the judgment its job requires. |
-| **`skills/`** | Fifteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, a game-character planner and pipeline, and a security audit (Cloudflare's, see below). |
+| **`skills/`** | Fifteen invocable procedures: four foundation protocols, a decision ledger, a knowledge library, a second-model consult, a session-close checklist, a deploy read-back, a visual-work loop, an orchestration guide, a questioning drill, a game-character planner and pipeline, and a security audit (Cloudflare's). [What each one is for](#the-skills). |
 | **`hooks/`** | Guard hooks that block bad tool calls before they run. With tests. |
 | **`lessons/`** | Thirteen field notes: what went wrong, why, and the rule it produced. |
 | **`ledger/`** | The decision ledger as a tool you can copy into a project: a CLI, a hook, three schemas and 122 tests, set inside an invented example project with real output. Needs Node 24 and two packages. |
 | **`library/`** | A starter cross-project knowledge library: the index builder with its tests, a document template, and six example entries. |
 | **`case-studies/`** | One rule followed end to end: [the CI gate](case-studies/ci-gate.md), from a sentence in a file to a check, through a review that found four holes in it and a first CI run that found a fifth. |
+
+## The skills
+
+A skill is a folder with a `SKILL.md` that the agent loads when a task matches
+its description. Each one is a procedure, not a prompt: it says what to do, in
+what order, and what counts as done. Take only the ones that match your work.
+
+**Any project**
+
+| Skill | What it does | Best for |
+|---|---|---|
+| [`session-close`](skills/session-close/SKILL.md) | A checklist for the end of a session, and a handoff file with five fixed fields (done, in progress, open decisions, blocked on, next command), so the next session resumes without guessing. | Anyone whose sessions get cut off or who works across several days. Start here. |
+| [`grilling`](skills/grilling/SKILL.md) | Questions you about a plan one decision at a time, with a recommended answer for each, and does nothing until you agree. Adapted from Matt Pocock's `grill-me` skill. | Stress-testing a plan before you commit to it. |
+| [`efficient-orchestration`](skills/efficient-orchestration/SKILL.md) | Decides whether a task is worth splitting across subagents, sends reading and bounded code to cheaper models, and keeps judgment, UI and review on the lead model. | Large tasks: recon across many files, research, test-output triage, independent slices. |
+| [`consult-codex`](skills/consult-codex/SKILL.md) | Gets a second opinion from a different model family (OpenAI's Codex CLI), with how to brief it cold and how to check its reply before acting on it. | Architecture calls, security boundaries, a pre-ship check. Needs the Codex CLI and its Claude Code plugin. |
+| [`ledger`](skills/ledger/SKILL.md) | Writes a decision, correction or gotcha into the project's ledger the moment it lands, so a later session is told about it when it touches the same files or topic. | Long projects where the agent keeps re-asking "did we already decide this?". Needs the tool in [`ledger/`](ledger/README.md). |
+| [`library`](skills/library/SKILL.md) | Files a lesson that applies beyond one project into a shared knowledge library, in the format its index builder accepts. | Anyone running several projects who keeps relearning the same trap. Needs [`library/`](library/README.md). |
+
+**Starting something new**
+
+| Skill | What it does | Best for |
+|---|---|---|
+| [`foundation-web`](skills/foundation-web/SKILL.md) | A kickoff interview that forces the early decisions (auth and sessions, data and migrations, budgets, what enforces each one) and writes them to `docs/FOUNDATION.md`. | Websites, web apps, storefronts and APIs. |
+| [`foundation-software`](skills/foundation-software/SKILL.md) | The same, for software that is not a website. | Desktop apps, CLIs, services, libraries, data pipelines. |
+| [`foundation-mobile`](skills/foundation-mobile/SKILL.md) | The same, with secure storage, offline behaviour and store rules. | iOS and Android apps, native or cross-platform. |
+| [`foundation-ue5`](skills/foundation-ue5/SKILL.md) | The same, with game pillars, frame budgets on real hardware, the C++/Blueprint split and who owns game state in multiplayer. | Unreal Engine 5 games. |
+
+**Shipping and checking**
+
+| Skill | What it does | Best for |
+|---|---|---|
+| [`deploy-verify`](skills/deploy-verify/SKILL.md) | Four read-backs before anyone says "deployed": the commit on the target, the files there, a live hit, and the cache. | Anyone deploying to a server, a host or a store page. Also the first step when a "fixed" bug is still there. |
+| [`ui-refine`](skills/ui-refine/SKILL.md) | Sets a visual target before coding, keeps visual work on the lead model, and loops screenshot, compare, fix until it matches. | Pages, components, layouts, HUDs, and debugging anything that "looks wrong". |
+| [`security-audit`](skills/security-audit/SKILL.md) | Security review from a focused question up to a full audit with a validated report. Cloudflare's skill, copied unmodified. | Code reviews before release, pen tests, threat questions. |
+
+**Game art**
+
+| Skill | What it does | Best for |
+|---|---|---|
+| [`3dmodel-planning`](skills/3dmodel-planning/SKILL.md) | An interview that pins down a 3D asset before anything is generated: budgets, camera, which pieces are separate parts. Writes a brief, a spec and the prompts for your image tool. Spends nothing. | Game developers about to generate a character, creature or prop with AI. |
+| [`game-character`](skills/game-character/SKILL.md) | Turns a reference image into a rigged, modular UE5 character: AI base mesh and rig from Meshy, hard parts built in Blender, everything on one skeleton, FBX export and a report. | Small teams who need game-ready characters without a modeller. Needs Blender 4.2+, Python and a paid Meshy API key. |
 
 ## The rules that matter most
 
